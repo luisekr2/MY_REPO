@@ -568,6 +568,22 @@ class RobCompressOnFusionOffConfig(n: Int = 1) extends Config(
   )
 }
 
+class RobCompressBranchIsolatedConfig(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map(_.copy(RobCompressEn = true))
+  })
+) {
+  private val core = this(XSTileKey).head
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressBranchIsolatedConfig " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} fusionEn=${core.backendParams.fusionEn} " +
+    s"branchIsolation=true " +
+    s"decodeWidth=${core.DecodeWidth} renameWidth=${core.RenameWidth} " +
+    s"commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
+  )
+}
+
 class CVMConfig(n: Int = 1) extends Config(
   new CVMCompile
     ++ new DefaultConfig(n)

@@ -35,7 +35,6 @@ import chisel3.util._
 import chisel3.util.experimental.decode.EspressoMinimizer
 import freechips.rocketchip.rocket.DecodeLogic
 import xiangshan._
-import xiangshan.backend.fu.FuType
 
 class CompressUnit(implicit p: Parameters) extends XSModule{
   val io = IO(new Bundle {
@@ -54,8 +53,8 @@ class CompressUnit(implicit p: Parameters) extends XSModule{
   val canCompress = io.in.zip(noExc).zip(uopCanCompress).map { case ((in, noExc), canComp) =>
     in.valid && in.bits.lastUop && noExc && canComp && backendParams.robCompressEn.B
   }
-  val extendedCanCompress = canCompress.zip(io.in).zip(io.oddFtqVec).flatMap { case ((canComp, in), oddFtq) =>
-    Seq((FuType.isBlockBackCompress(in.bits.fuType) && in.valid && backendParams.robCompressEn.B) || canComp ,canComp && !oddFtq)
+  val extendedCanCompress = canCompress.zip(io.oddFtqVec).flatMap { case (canComp, oddFtq) =>
+    Seq(canComp, canComp && !oddFtq)
   }
 
   val compressTable = (0 until 1 << (2 * RenameWidth)).filter { baseCandidate =>
