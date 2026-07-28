@@ -37,11 +37,11 @@ case class BackendParams(
   schdParams : Map[SchedulerType, SchdBlockParams],
   pregParams : Seq[PregParams],
   iqWakeUpParams : Seq[WakeUpConfig],
+  robCompressEn: Boolean = false,
+  fusionEn: Boolean = true,
 ) {
 
   def debugEn(implicit p: Parameters): Boolean = p(DebugOptionsKey).EnableDifftest
-
-  def robCompressEn: Boolean = false
 
   def regCacheEn: Boolean = true
 
