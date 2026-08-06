@@ -333,11 +333,11 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
   val instrSizesVec = compressUnit.io.out.instrSizes
   val compressMasksVec = compressUnit.io.out.masks
   io.in.zip(io.validVec).zipWithIndex.foreach { case ((in, valid), i) =>
-    when(valid && in.bits.lastUop && FuType.isBlockBackCompress(in.bits.fuType)) {
-      assert(needRobFlags(i), "branch/jump must allocate an independent ROB entry")
-      assert(instrSizesVec(i) === 1.U, "branch/jump ROB entry must contain exactly one instruction")
+    when(valid && in.bits.lastUop && FuType.isBrh(in.bits.fuType)) {
+      assert(needRobFlags(i), "conditional branch must allocate an independent ROB entry")
+      assert(instrSizesVec(i) === 1.U, "conditional branch ROB entry must contain exactly one instruction")
       assert(PopCount(compressMasksVec(i)) === 1.U && compressMasksVec(i)(i),
-        "branch/jump compression mask must select only itself")
+        "conditional branch compression mask must select only itself")
     }
   }
   // speculatively assign the instruction with an robIdx
@@ -1051,11 +1051,16 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
     case ((in, valid), size) =>
       valid && in.bits.lastUop && FuType.isBlockBackCompress(in.bits.fuType) && size > 1.U
   })
+  val robConditionalBranchSharedEntry = PopCount(io.in.zip(io.validVec).zip(instrSizesVec).map {
+    case ((in, valid), size) =>
+      valid && in.bits.lastUop && FuType.isBrh(in.bits.fuType) && size > 1.U
+  })
   XSPerfAccumulate("rob_input_instr", Mux(canOut, robInputInstr, 0.U))
   XSPerfAccumulate("rob_allocated_entries", Mux(canOut, validCount, 0.U))
   XSPerfAccumulate("rob_compressed_instr", Mux(canOut, robCompressedInstr, 0.U))
   XSPerfAccumulate("rob_entries_saved", Mux(canOut, robInputInstr - validCount, 0.U))
   XSPerfAccumulate("rob_control_flow_shared_entry", Mux(canOut, robControlFlowSharedEntry, 0.U))
+  XSPerfAccumulate("rob_conditional_branch_shared_entry", Mux(canOut, robConditionalBranchSharedEntry, 0.U))
   XSPerfAccumulate("wait_cycle", !io.in.head.valid && dispatchCanAcc)
   for (i <- 1 to RenameWidth){
     XSPerfAccumulate(s"load_num_$i", PopCount(io.in.map(x => x.fire && FuType.isLoad(x.bits.fuType))) === i.U)

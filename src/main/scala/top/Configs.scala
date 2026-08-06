@@ -592,8 +592,7 @@ class RobCompressOnTageScReadFreeConfig(n: Int = 1) extends Config(
         frontendParameters = core.frontendParameters.copy(
           bpuParameters = core.frontendParameters.bpuParameters.copy(
             scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
-              ReadFreeTraining = true,
-              WriteBufferSize = 8
+              ReadFreeTraining = true
             )
           )
         )
