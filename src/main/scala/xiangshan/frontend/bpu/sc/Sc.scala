@@ -433,28 +433,13 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
     })
   private val t0_needWrite    = t0_writeValidVec.reduce(_ || _)
   private val t0_bankConflict = t0_needWrite && s0_fire && t0_bankMask === s0_bankMask
-  private val t0_bankIdentityMatch = t0_meta.snapshotBankMask === t0_bankMask
-  private val t0_pathIdentityMatch =
-    t0_meta.debug_predPathIdx.get.zip(t0_pathIdx).map { case (pred, train) => pred === train }.reduce(_ && _)
-  private val t0_globalIdentityMatch =
-    t0_meta.debug_predGlobalIdx.get.zip(t0_globalIdx).map { case (pred, train) => pred === train }.reduce(_ && _)
-  private val t0_bwIdentityMatch =
-    t0_meta.debug_predBWIdx.get.zip(t0_bwIdx).map { case (pred, train) => pred === train }.reduce(_ && _)
-  private val t0_imliIdentityMatch = t0_meta.debug_predImliIdx.get === t0_imliIdx
-  private val t0_biasIdentityMatch = t0_meta.debug_predBiasIdx.get === t0_biasIdx
-
-  // Match only tables that this transaction can mutate.  Global/backward
-  // tables are not read or written when common history is invalid, so their
-  // indices must not reject an otherwise coherent snapshot.  Compile-time
-  // disabled tables are handled in the same way.  Bank identity remains
-  // mandatory because all enabled SC tables share the selected bank.
   private val t0_snapshotIdentityMatch =
-    t0_bankIdentityMatch &&
-      (!PathEnable.B || t0_pathIdentityMatch) &&
-      (!GlobalEnable.B || !t0_commonHR.valid || t0_globalIdentityMatch) &&
-      (!BWEnable.B || !t0_commonHR.valid || t0_bwIdentityMatch) &&
-      (!ImliEnable.B || t0_imliIdentityMatch) &&
-      (!BiasEnable.B || t0_biasIdentityMatch)
+    t0_meta.snapshotBankMask === t0_bankMask &&
+      t0_meta.debug_predPathIdx.get.zip(t0_pathIdx).map { case (pred, train) => pred === train }.reduce(_ && _) &&
+      t0_meta.debug_predGlobalIdx.get.zip(t0_globalIdx).map { case (pred, train) => pred === train }.reduce(_ && _) &&
+      t0_meta.debug_predBWIdx.get.zip(t0_bwIdx).map { case (pred, train) => pred === train }.reduce(_ && _) &&
+      t0_meta.debug_predImliIdx.get === t0_imliIdx &&
+      t0_meta.debug_predBiasIdx.get === t0_biasIdx
 
   // Row versions change only when an update reaches t2.  Consequently, a
   // snapshot can still look fresh while an older update to the same row is in
