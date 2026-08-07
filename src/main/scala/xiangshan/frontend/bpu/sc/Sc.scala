@@ -585,34 +585,31 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
   private def oneStepTargetFresh(
       snapshot: UInt,
       current: UInt,
-      recentHit: Bool,
-      recentMask: Vec[Bool],
+      lastMask: Vec[Bool],
       targetMask: Vec[Bool]
   ): Bool =
-    snapshot + 1.U === current && recentHit &&
-      !recentMask.zip(targetMask).map { case (last, target) => last && target }.reduce(_ || _)
+    snapshot + 1.U === current &&
+      !lastMask.zip(targetMask).map { case (last, target) => last && target }.reduce(_ || _)
 
   private val t0_pathOneStepFresh = t0_meta.snapshotPathVersions.zip(pathTable).map { case (snap, table) =>
-    oneStepTargetFresh(snap, table.io.trainVersion, table.io.recentUpdateHit, table.io.recentUpdateWayMask, t0_targetWayMask)
+    oneStepTargetFresh(snap, table.io.trainVersion, table.io.lastUpdateWayMask, t0_targetWayMask)
   }
   private val t0_globalOneStepFresh = t0_meta.snapshotGlobalVersions.zip(globalTable).map { case (snap, table) =>
-    oneStepTargetFresh(snap, table.io.trainVersion, table.io.recentUpdateHit, table.io.recentUpdateWayMask, t0_targetWayMask)
+    oneStepTargetFresh(snap, table.io.trainVersion, table.io.lastUpdateWayMask, t0_targetWayMask)
   }
   private val t0_bwOneStepFresh = t0_meta.snapshotBWVersions.zip(bwTable).map { case (snap, table) =>
-    oneStepTargetFresh(snap, table.io.trainVersion, table.io.recentUpdateHit, table.io.recentUpdateWayMask, t0_targetWayMask)
+    oneStepTargetFresh(snap, table.io.trainVersion, table.io.lastUpdateWayMask, t0_targetWayMask)
   }
   private val t0_imliOneStepFresh = oneStepTargetFresh(
     t0_meta.snapshotImliVersion,
     imliTable.io.trainVersion,
-    imliTable.io.recentUpdateHit,
-    imliTable.io.recentUpdateWayMask,
+    imliTable.io.lastUpdateWayMask,
     t0_targetWayMask
   )
   private val t0_biasOneStepFresh = oneStepTargetFresh(
     t0_meta.snapshotBiasVersion,
     biasTable.io.trainVersion,
-    biasTable.io.recentUpdateHit,
-    biasTable.io.recentUpdateWayMask,
+    biasTable.io.lastUpdateWayMask,
     t0_targetBiasWayMask
   )
 
