@@ -645,35 +645,6 @@ class RobCompressOnScShadowOnlyConfig(n: Int = 1) extends Config(
   )
 }
 
-/** SC shadow-only experiment with the negatively correlated bias component disabled. */
-class RobCompressOnScShadowNoBiasConfig(n: Int = 1) extends Config(
-  new DefaultConfig(n).alter((site, here, up) => {
-    case XSTileKey => up(XSTileKey).map { core =>
-      core.copy(
-        RobCompressEn = true,
-        frontendParameters = core.frontendParameters.copy(
-          bpuParameters = core.frontendParameters.bpuParameters.copy(
-            tageParameters = core.frontendParameters.bpuParameters.tageParameters.copy(
-              ReadFreeTraining = false
-            ),
-            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
-              ReadFreeTraining = true,
-              BiasEnable = false
-            )
-          )
-        )
-      )
-    }
-  })
-) {
-  private val core = this(XSTileKey).head
-  Console.println(
-    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowNoBiasConfig " +
-    s"robCompressEn=${core.backendParams.robCompressEn} tageReadFree=false scReadFree=true " +
-    s"scBias=false robSize=${core.RobSize}"
-  )
-}
-
 class RobCompressOnFusionOffConfig(n: Int = 1) extends Config(
   new DefaultConfig(n).alter((site, here, up) => {
     case XSTileKey => up(XSTileKey).map(_.copy(RobCompressEn = true, FusionEnable = false))
