@@ -35,7 +35,6 @@ import chisel3.util._
 import chisel3.util.experimental.decode.EspressoMinimizer
 import freechips.rocketchip.rocket.DecodeLogic
 import xiangshan._
-import xiangshan.backend.fu.FuType
 
 class CompressUnit(implicit p: Parameters) extends XSModule{
   val io = IO(new Bundle {
