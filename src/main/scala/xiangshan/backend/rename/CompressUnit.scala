@@ -60,9 +60,12 @@ class CompressUnit(implicit p: Parameters) extends XSModule{
   // for jumps while retaining the normal odd-FTQ boundary on the back side.
   val extendedCanCompress = canCompress.zip(io.in).zip(io.oddFtqVec).flatMap {
     case ((canComp, in), oddFtq) =>
-      val directJalCanJoinPrevious = FuType.isJump(in.bits.fuType) &&
-        in.bits.fuOpType === JumpOpType.jal && in.valid && backendParams.robCompressEn.B
-      Seq(directJalCanJoinPrevious || canComp, canComp && !oddFtq)
+      // AUIPC uses the jump execution unit, but it does not redirect the
+      // frontend.  Recover its ROB compression opportunity while keeping
+      // JAL/JALR and conditional branches as singleton entries.
+      val auipcCanJoinPrevious = FuType.isJump(in.bits.fuType) &&
+        in.bits.fuOpType === JumpOpType.auipc && in.valid && backendParams.robCompressEn.B
+      Seq(auipcCanJoinPrevious || canComp, canComp && !oddFtq)
   }
 
   val compressTable = (0 until 1 << (2 * RenameWidth)).filter { baseCandidate =>
