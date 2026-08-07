@@ -103,26 +103,21 @@ class ScTable(
   // A row version represents accepted logical updates, including updates
   // retained in the write buffer but not yet drained to SRAM.
   private val rowVersions    = RegInit(VecInit.fill(NumBanks)(VecInit.fill(numSets)(0.U(ScRowVersionWidth.W))))
-  // Small bank-local journal of recent logical mutations.  Unlike a mask per
-  // SRAM row, this keeps the proof state compact and avoids a large row mux.
-  private val RecentUpdateDepth = 4
-  private val recentValid = RegInit(VecInit.fill(NumBanks)(VecInit.fill(RecentUpdateDepth)(false.B)))
-  private val recentSetIdx = RegInit(VecInit.fill(NumBanks)(VecInit.fill(RecentUpdateDepth)(0.U(log2Ceil(numSets).W))))
-  private val recentVersion = RegInit(VecInit.fill(NumBanks)(VecInit.fill(RecentUpdateDepth)(0.U(ScRowVersionWidth.W))))
-  private val recentWayMask =
-    RegInit(VecInit.fill(NumBanks)(VecInit.fill(RecentUpdateDepth)(VecInit.fill(numWays)(false.B))))
+  // One bank-local most-recent mutation.  Static per-bank writes keep this
+  // proof state off the SRAM read path and avoid a dynamic journal mux.
+  private val recentValid   = RegInit(VecInit.fill(NumBanks)(false.B))
+  private val recentSetIdx  = RegInit(VecInit.fill(NumBanks)(0.U(log2Ceil(numSets).W)))
+  private val recentVersion = RegInit(VecInit.fill(NumBanks)(0.U(ScRowVersionWidth.W)))
+  private val recentWayMask = RegInit(VecInit.fill(NumBanks)(VecInit.fill(numWays)(false.B)))
   private val predictBankIdx = OHToUInt(io.predictReadReq.bits.bankMask)
   private val trainBankIdx   = OHToUInt(io.trainReadReq.bits.bankMask)
   io.predictVersion := rowVersions(predictBankIdx)(io.predictReadReq.bits.setIdx)
   io.trainVersion   := rowVersions(trainBankIdx)(io.trainReadReq.bits.setIdx)
   io.commitVersion  := rowVersions(OHToUInt(io.commitBankMask))(io.commitSetIdx)
-  private val recentHitMask = VecInit((0 until RecentUpdateDepth).map { i =>
-    recentValid(trainBankIdx)(i) &&
-      recentSetIdx(trainBankIdx)(i) === io.trainReadReq.bits.setIdx &&
-      recentVersion(trainBankIdx)(i) === io.trainVersion
-  })
-  io.recentUpdateHit := recentHitMask.asUInt.orR
-  io.recentUpdateWayMask := Mux1H(recentHitMask, recentWayMask(trainBankIdx))
+  io.recentUpdateHit := recentValid(trainBankIdx) &&
+    recentSetIdx(trainBankIdx) === io.trainReadReq.bits.setIdx &&
+    recentVersion(trainBankIdx) === io.trainVersion
+  io.recentUpdateWayMask := recentWayMask(trainBankIdx)
 
   io.sramResetDone := sram.map(_.io.resetDone).reduce(_ && _)
 
@@ -186,16 +181,14 @@ class ScTable(
   when(updateValid) {
     val bankIdx = OHToUInt(updateBankMask)
     rowVersions(bankIdx)(updateIdx) := rowVersions(bankIdx)(updateIdx) + 1.U
-    for (i <- (1 until RecentUpdateDepth).reverse) {
-      recentValid(bankIdx)(i)   := recentValid(bankIdx)(i - 1)
-      recentSetIdx(bankIdx)(i)  := recentSetIdx(bankIdx)(i - 1)
-      recentVersion(bankIdx)(i) := recentVersion(bankIdx)(i - 1)
-      recentWayMask(bankIdx)(i) := recentWayMask(bankIdx)(i - 1)
+    updateBankMask.asBools.zipWithIndex.foreach { case (enable, i) =>
+      when(enable) {
+        recentValid(i)   := true.B
+        recentSetIdx(i)  := updateIdx
+        recentVersion(i) := rowVersions(i)(updateIdx) + 1.U
+        recentWayMask(i) := updateWayMask
+      }
     }
-    recentValid(bankIdx)(0)   := true.B
-    recentSetIdx(bankIdx)(0)  := updateIdx
-    recentVersion(bankIdx)(0) := rowVersions(bankIdx)(updateIdx) + 1.U
-    recentWayMask(bankIdx)(0) := updateWayMask
   }
 
   writeBuffer.zip(updateBankMask.asBools).zipWithIndex.foreach {
