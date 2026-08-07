@@ -43,6 +43,7 @@ class ScTable(
     val commitSetIdx:      UInt              = Input(UInt(log2Ceil(numSets).W))
     val commitBankMask:    UInt              = Input(UInt(NumBanks.W))
     val commitVersion:     UInt              = Output(UInt(ScRowVersionWidth.W))
+    val lastUpdateWayMask: Vec[Bool]         = Output(Vec(numWays, Bool()))
     val repairSetIdx:      UInt              = Input(UInt(log2Ceil(numSets).W))
     val repairBankMask:    UInt              = Input(UInt(NumBanks.W))
     val repairHit:         Bool              = Output(Bool())
@@ -101,11 +102,17 @@ class ScTable(
   // A row version represents accepted logical updates, including updates
   // retained in the write buffer but not yet drained to SRAM.
   private val rowVersions    = RegInit(VecInit.fill(NumBanks)(VecInit.fill(numSets)(0.U(ScRowVersionWidth.W))))
+  // Exact mask of the most recent accepted logical mutation to each row.
+  // Together with snapshotVersion + 1 == trainVersion this proves that an
+  // untouched target way is still identical to the prediction snapshot.
+  private val lastUpdateWayMasks =
+    RegInit(VecInit.fill(NumBanks)(VecInit.fill(numSets)(VecInit.fill(numWays)(false.B))))
   private val predictBankIdx = OHToUInt(io.predictReadReq.bits.bankMask)
   private val trainBankIdx   = OHToUInt(io.trainReadReq.bits.bankMask)
   io.predictVersion := rowVersions(predictBankIdx)(io.predictReadReq.bits.setIdx)
   io.trainVersion   := rowVersions(trainBankIdx)(io.trainReadReq.bits.setIdx)
   io.commitVersion  := rowVersions(OHToUInt(io.commitBankMask))(io.commitSetIdx)
+  io.lastUpdateWayMask := lastUpdateWayMasks(trainBankIdx)(io.trainReadReq.bits.setIdx)
 
   io.sramResetDone := sram.map(_.io.resetDone).reduce(_ && _)
 
@@ -169,6 +176,7 @@ class ScTable(
   when(updateValid) {
     val bankIdx = OHToUInt(updateBankMask)
     rowVersions(bankIdx)(updateIdx) := rowVersions(bankIdx)(updateIdx) + 1.U
+    lastUpdateWayMasks(bankIdx)(updateIdx) := updateWayMask
   }
 
   writeBuffer.zip(updateBankMask.asBools).zipWithIndex.foreach {
