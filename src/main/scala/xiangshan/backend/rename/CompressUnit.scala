@@ -54,18 +54,8 @@ class CompressUnit(implicit p: Parameters) extends XSModule{
   val canCompress = io.in.zip(noExc).zip(uopCanCompress).map { case ((in, noExc), canComp) =>
     in.valid && in.bits.lastUop && noExc && canComp && backendParams.robCompressEn.B
   }
-  // Conditional branches remain hard ROB boundaries because their predictor
-  // training identity must never be shared.  Jumps do not update TAGE/SC
-  // direction counters, so recover the original front-side compression link
-  // for jumps while retaining the normal odd-FTQ boundary on the back side.
-  val extendedCanCompress = canCompress.zip(io.in).zip(io.oddFtqVec).flatMap {
-    case ((canComp, in), oddFtq) =>
-      // AUIPC uses the jump execution unit, but it does not redirect the
-      // frontend.  Recover its ROB compression opportunity while keeping
-      // JAL/JALR and conditional branches as singleton entries.
-      val auipcCanJoinPrevious = FuType.isJump(in.bits.fuType) &&
-        in.bits.fuOpType === JumpOpType.auipc && in.valid && backendParams.robCompressEn.B
-      Seq(auipcCanJoinPrevious || canComp, canComp && !oddFtq)
+  val extendedCanCompress = canCompress.zip(io.oddFtqVec).flatMap { case (canComp, oddFtq) =>
+    Seq(canComp, canComp && !oddFtq)
   }
 
   val compressTable = (0 until 1 << (2 * RenameWidth)).filter { baseCandidate =>
