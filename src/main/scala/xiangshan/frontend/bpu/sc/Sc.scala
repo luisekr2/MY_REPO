@@ -432,18 +432,6 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
           t0_meta.tagePredValid(predIdx) && t0_meta.scPred(predIdx) === t0_meta.tagePred(predIdx)))
     })
   private val t0_needWrite    = t0_writeValidVec.reduce(_ || _)
-  private val t0_branchesWayIdxVec = VecInit(t0_branches.map(b => getWayIdx(b.bits.cfiPosition)))
-  private val t0_targetWayMask = VecInit.tabulate(NumWays) { wayIdx =>
-    t0_writeValidVec.zip(t0_branchesWayIdxVec).map { case (valid, target) =>
-      valid && target === wayIdx.U
-    }.reduce(_ || _)
-  }
-  private val t0_targetBiasWayMask = VecInit.tabulate(BiasTableNumWays) { wayIdx =>
-    t0_writeValidVec.zip(t0_branchesWayIdxVec).zip(t0_branchesScIdxVec).map {
-      case ((valid, target), predIdx) =>
-        valid && Cat(target, t0_meta.scBiasLowerBits(predIdx)) === wayIdx.U
-    }.reduce(_ || _)
-  }
   private val t0_bankConflict = t0_needWrite && s0_fire && t0_bankMask === s0_bankMask
   private val t0_snapshotIdentityMatch =
     t0_meta.snapshotBankMask === t0_bankMask &&
@@ -579,40 +567,6 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
     biasTable.io.repairHit
   )
 
-  // If exactly one logical update happened after prediction and it touched no
-  // way that this training operation may update, all target counters in the
-  // snapshot are still exact.  This is a strict proof, not an age heuristic.
-  private def oneStepTargetFresh(
-      snapshot: UInt,
-      current: UInt,
-      lastMask: Vec[Bool],
-      targetMask: Vec[Bool]
-  ): Bool =
-    snapshot + 1.U === current &&
-      !lastMask.zip(targetMask).map { case (last, target) => last && target }.reduce(_ || _)
-
-  private val t0_pathOneStepFresh = t0_meta.snapshotPathVersions.zip(pathTable).map { case (snap, table) =>
-    oneStepTargetFresh(snap, table.io.trainVersion, table.io.lastUpdateWayMask, t0_targetWayMask)
-  }
-  private val t0_globalOneStepFresh = t0_meta.snapshotGlobalVersions.zip(globalTable).map { case (snap, table) =>
-    oneStepTargetFresh(snap, table.io.trainVersion, table.io.lastUpdateWayMask, t0_targetWayMask)
-  }
-  private val t0_bwOneStepFresh = t0_meta.snapshotBWVersions.zip(bwTable).map { case (snap, table) =>
-    oneStepTargetFresh(snap, table.io.trainVersion, table.io.lastUpdateWayMask, t0_targetWayMask)
-  }
-  private val t0_imliOneStepFresh = oneStepTargetFresh(
-    t0_meta.snapshotImliVersion,
-    imliTable.io.trainVersion,
-    imliTable.io.lastUpdateWayMask,
-    t0_targetWayMask
-  )
-  private val t0_biasOneStepFresh = oneStepTargetFresh(
-    t0_meta.snapshotBiasVersion,
-    biasTable.io.trainVersion,
-    biasTable.io.lastUpdateWayMask,
-    t0_targetBiasWayMask
-  )
-
   private val t0_repairedPathEntries = VecInit(t0_meta.snapshotPathEntries.zip(pathTable).zipWithIndex.map {
     case ((entries, table), i) =>
       Mux(t0_pathFresh(i), entries, repairSnapshot(entries, table, t0_meta.snapshotPathVersions(i)))
@@ -658,17 +612,17 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
   private val t0_forwardedImliVersion    = WireInit(t0_repairedImliVersion)
   private val t0_forwardedBiasVersion    = WireInit(t0_repairedBiasVersion)
   private val t0_snapshotFresh =
-    (!PathEnable.B || t0_pathFresh.zip(t0_pathShadowCovers).zip(t0_pathOneStepFresh).map {
-      case ((fresh, covered), oneStep) => fresh || covered || oneStep
-    }.reduce(_ && _)) &&
-      (!GlobalEnable.B || !t0_commonHR.valid || t0_globalFresh.zip(t0_globalShadowCovers).zip(t0_globalOneStepFresh).map {
-        case ((fresh, covered), oneStep) => fresh || covered || oneStep
+    (!PathEnable.B || t0_pathFresh.zip(t0_pathShadowCovers).map { case (fresh, covered) => fresh || covered }.reduce(
+      _ && _
+    )) &&
+      (!GlobalEnable.B || !t0_commonHR.valid || t0_globalFresh.zip(t0_globalShadowCovers).map {
+        case (fresh, covered) => fresh || covered
       }.reduce(_ && _)) &&
-      (!BWEnable.B || !t0_commonHR.valid || t0_bwFresh.zip(t0_bwShadowCovers).zip(t0_bwOneStepFresh).map {
-        case ((fresh, covered), oneStep) => fresh || covered || oneStep
+      (!BWEnable.B || !t0_commonHR.valid || t0_bwFresh.zip(t0_bwShadowCovers).map {
+        case (fresh, covered) => fresh || covered
       }.reduce(_ && _)) &&
-      (!ImliEnable.B || t0_imliFresh || t0_imliShadowCovers || t0_imliOneStepFresh) &&
-      (!BiasEnable.B || t0_biasFresh || t0_biasShadowCovers || t0_biasOneStepFresh)
+      (!ImliEnable.B || t0_imliFresh || t0_imliShadowCovers) &&
+      (!BiasEnable.B || t0_biasFresh || t0_biasShadowCovers)
   private val t0_useReadFreeSnapshot =
     ScReadFreeTraining.B && t0_bankConflict && t0_snapshotIdentityMatch && t0_snapshotFresh
   private val t0_needRead              = t0_needWrite && !t0_useReadFreeSnapshot
@@ -719,12 +673,6 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
     "read_free_pending_fallback",
     ScReadFreeTraining.B && t0_bankConflict && t0_snapshotIdentityMatch && t0_snapshotFresh &&
       t0_pendingMutationHazard
-  )
-  XSPerfAccumulate(
-    "read_free_one_step_target_fresh",
-    t0_fire && t0_useReadFreeSnapshot &&
-      (t0_pathOneStepFresh.reduce(_ || _) || t0_globalOneStepFresh.reduce(_ || _) ||
-        t0_bwOneStepFresh.reduce(_ || _) || t0_imliOneStepFresh || t0_biasOneStepFresh)
   )
 
   /*
