@@ -25,8 +25,12 @@ import utility.XSPerfAccumulate
 import utility.XSPerfHistogram
 import xiangshan.frontend.bpu.BasePredictor
 import xiangshan.frontend.bpu.BasePredictorIO
+import xiangshan.frontend.bpu.BranchInfo
 import xiangshan.frontend.bpu.HalfAlignHelper
+import xiangshan.frontend.PrunedAddr
 import xiangshan.frontend.bpu.TageTableInfo
+import xiangshan.frontend.bpu.history.phr.PhrAllFoldedHistories
+import xiangshan.frontend.bpu.mbtb.MainBtbMeta
 
 /**
  * This module is the implementation of the TAGE (TAgged GEometric history length predictor).
@@ -173,8 +177,75 @@ class Tage(implicit p: Parameters) extends BasePredictor with HasTageParameters 
      - send read request to tables
      -------------------------------------------------------------------------------------------------------------- */
 
-  private val t0_startPc  = io.train.startPc
-  private val t0_branches = io.train.branches
+  // Delay only those committed training requests that lose a single-port SRAM
+  // bank arbitration to prediction.  flow=true preserves the original
+  // zero-queue-latency path when the selected bank is available.
+  private class DeferredTrainReq extends Bundle {
+    val startPc:        PrunedAddr             = PrunedAddr(VAddrBits)
+    val branches:       Vec[Valid[BranchInfo]] = Vec(ResolveEntryBranchNumber, Valid(new BranchInfo))
+    val mbtbMeta:       MainBtbMeta            = new MainBtbMeta
+    val tageMeta:       TageMeta               = new TageMeta
+    val foldedPathHist: PhrAllFoldedHistories = new PhrAllFoldedHistories(AllFoldedHistoryInfo)
+  }
+
+  private val TrainQueueDepth         = 4
+  private val TrainQueueHighWatermark = TrainQueueDepth - 1
+  private val trainQueues = Seq.tabulate(NumBanks) { bankIdx =>
+    Module(new Queue(
+      new DeferredTrainReq,
+      entries = TrainQueueDepth,
+      pipe = true,
+      flow = false
+    )).suggestName(s"tage_deferred_train_bank_$bankIdx")
+  }
+  // Bank-local payload queues are accompanied by a small global bank-token
+  // FIFO.  It prevents requests to different banks from overtaking allocation
+  // and useful-reset operations while avoiding replication of the full payload.
+  private val trainOrder = Module(new Queue(
+    UInt(BankIdxWidth.W),
+    entries = NumBanks * TrainQueueHighWatermark,
+    pipe = true,
+    flow = false
+  )).suggestName("tage_deferred_train_order")
+
+  private val incomingCondMask = VecInit(io.train.branches.map { branch =>
+    branch.valid && branch.bits.attribute.isConditional
+  })
+  private val incomingHasCond = incomingCondMask.reduce(_ || _)
+  private val incomingBankIdx = tables.head.getBankIndex(io.train.startPc)
+  private val selectedEnqBelowHighWatermark = Mux1H(
+    UIntToOH(incomingBankIdx, NumBanks),
+    trainQueues.map(_.io.count < TrainQueueHighWatermark.U)
+  )
+
+  io.trainReady := !incomingHasCond || selectedEnqBelowHighWatermark
+
+  private val incomingReq = Wire(new DeferredTrainReq)
+  incomingReq.startPc        := io.train.startPc
+  incomingReq.branches       := io.train.branches
+  incomingReq.mbtbMeta       := io.train.meta.mbtb
+  incomingReq.tageMeta       := io.train.meta.tage
+  incomingReq.foldedPathHist := io.fromPhr.foldedPathHistForTrain
+  private val incomingFire   = io.stageCtrl.t0_fire && incomingHasCond
+  private val deferIncoming  = Wire(Bool())
+
+  trainQueues.zipWithIndex.foreach { case (queue, bankIdx) =>
+    queue.io.enq.valid := deferIncoming && incomingBankIdx === bankIdx.U
+    queue.io.enq.bits  := incomingReq
+  }
+  trainOrder.io.enq.valid := deferIncoming
+  trainOrder.io.enq.bits  := incomingBankIdx
+
+  private val queuedBankMask = UIntToOH(trainOrder.io.deq.bits, NumBanks)
+  private val queuedReqValid = trainOrder.io.deq.valid && Mux1H(queuedBankMask, trainQueues.map(_.io.deq.valid))
+  private val queuedReq      = Mux1H(queuedBankMask, trainQueues.map(_.io.deq.bits))
+  // Explicit empty-queue bypass retains the baseline no-conflict timing while
+  // keeping Decoupled ready paths out of the FTQ fire combinational cone.
+  private val activeReqValid = queuedReqValid || incomingFire
+  private val activeReq      = Mux(queuedReqValid, queuedReq, incomingReq)
+
+  private val t0_startPc  = activeReq.startPc
+  private val t0_branches = activeReq.branches
 
   // currently all tables share the same bank index
   private val t0_bankIdx  = tables.head.getBankIndex(t0_startPc)
@@ -183,11 +254,11 @@ class Tage(implicit p: Parameters) extends BasePredictor with HasTageParameters 
   private val t0_condMask = VecInit(t0_branches.map(branch => branch.valid && branch.bits.attribute.isConditional))
   private val t0_hasCond  = t0_condMask.reduce(_ || _)
 
-  private val t0_fire = io.stageCtrl.t0_fire && t0_hasCond && io.enable
+  private val t0_fire = Wire(Bool())
 
   private val (t0_mbtbHitMask, t0_basePred, t0_meta) = t0_branches.map { branch =>
-    val mbtbMeta  = io.train.meta.mbtb.entries.flatten
-    val tageMeta  = io.train.meta.tage.entries
+    val mbtbMeta  = activeReq.mbtbMeta.entries.flatten
+    val tageMeta  = activeReq.tageMeta.entries
     val hitMask   = mbtbMeta.map(_.hit(branch.bits))
     val hitMaskOH = PriorityEncoderOH(hitMask)
     val mbtbHit   = hitMask.reduce(_ || _)
@@ -206,14 +277,28 @@ class Tage(implicit p: Parameters) extends BasePredictor with HasTageParameters 
   }.reduce(_ && _)
   private val t0_needRead = !t0_useMeta
 
-  private val t0_readBankConflict = t0_hasCond && t0_needRead && s0_fire && t0_bankIdx === s0_bankIdx
-  io.trainReady := !t0_readBankConflict
+  private val t0_readBankConflict = activeReqValid && t0_needRead && s0_fire && t0_bankIdx === s0_bankIdx
+  private val t0_issue             = activeReqValid && !t0_readBankConflict && io.enable
+  t0_fire := t0_issue
+  deferIncoming := incomingFire && (queuedReqValid || t0_readBankConflict)
+
+  // Consume the global token and exactly one matching bank-local request
+  // atomically. Prediction and redirect data paths remain untouched.
+  trainOrder.io.deq.ready := t0_issue && queuedReqValid
+  trainQueues.zipWithIndex.foreach { case (queue, bankIdx) =>
+    queue.io.deq.ready := t0_issue && queuedReqValid && trainOrder.io.deq.bits === bankIdx.U
+  }
+
+  assert(!trainOrder.io.deq.valid || Mux1H(queuedBankMask, trainQueues.map(_.io.deq.valid)))
+  assert(!trainOrder.io.enq.valid || trainOrder.io.enq.ready)
+  trainQueues.foreach(queue => assert(!queue.io.enq.valid || queue.io.enq.ready))
+  trainQueues.foreach(queue => assert(queue.io.count < TrainQueueDepth.U))
 
   // t0_readBankConflict can be high even there's no train.valid, causing perf counters to be inaccurate
   // so we use a debug_ signal for perf counters
-  private val debug_readBankConflict = io.debug_trainValid && t0_readBankConflict
+  private val debug_readBankConflict = t0_readBankConflict
 
-  private val t0_foldedHist = getFoldedHist(io.fromPhr.foldedPathHistForTrain)
+  private val t0_foldedHist = getFoldedHist(activeReq.foldedPathHist)
   private val t0_setIdx = VecInit((tables zip t0_foldedHist).map { case (table, hist) =>
     table.getSetIndex(t0_startPc, hist.forIdx)
   })
@@ -685,6 +770,14 @@ class Tage(implicit p: Parameters) extends BasePredictor with HasTageParameters 
   XSPerfAccumulate("total_train", io.stageCtrl.t0_fire)
   XSPerfAccumulate("train_has_cond", t0_fire)
   XSPerfAccumulate("read_conflict", debug_readBankConflict)
+  XSPerfAccumulate("deferred_train_enqueued", trainOrder.io.enq.fire && !trainOrder.io.deq.fire)
+  XSPerfAccumulate("deferred_train_blocked", trainOrder.io.deq.valid && t0_readBankConflict)
+  XSPerfAccumulate("deferred_train_backpressure", incomingHasCond && !io.trainReady)
+  XSPerfAccumulate(
+    "deferred_train_high_watermark",
+    trainQueues.map(_.io.count === TrainQueueHighWatermark.U).reduce(_ || _)
+  )
+  XSPerfAccumulate("deferred_train_occupancy", trainOrder.io.count)
   XSPerfAccumulate("reset_useful", t3_usefulResetStart)
   XSPerfAccumulate(
     "allocate_not_needed_due_to_already_on_highest_table", {
@@ -718,7 +811,7 @@ class Tage(implicit p: Parameters) extends BasePredictor with HasTageParameters 
   )
   XSPerfAccumulate(
     "total_all_br_mispredicted",
-    t0_branches.map(b => io.stageCtrl.t0_fire && b.valid && b.bits.mispredict).reduce(_ || _)
+    t0_branches.map(b => t0_fire && b.valid && b.bits.mispredict).reduce(_ || _)
   )
   XSPerfAccumulate(
     "mispredict_branch_has_provider",
