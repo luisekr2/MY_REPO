@@ -329,6 +329,7 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
     sink.bits.canRobCompress := source.bits.canRobCompress && backendParams.robCompressEn.B
   }
   compressUnit.io.oddFtqVec := oddFtqVec
+  compressUnit.io.fusionVec := isFusionVec
   val needRobFlags = compressUnit.io.out.needRobFlags
   val instrSizesVec = compressUnit.io.out.instrSizes
   val compressMasksVec = compressUnit.io.out.masks
@@ -338,6 +339,13 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
       assert(instrSizesVec(i) === 1.U, "branch/jump ROB entry must contain exactly one instruction")
       assert(PopCount(compressMasksVec(i)) === 1.U && compressMasksVec(i)(i),
         "branch/jump compression mask must select only itself")
+    }
+    if (i < RenameWidth - 1) {
+      when(valid && isFusionVec(i) && !io.fusionCross2FtqVec(i)) {
+        assert(!needRobFlags(i), "a fused instruction pair must share one ROB entry")
+        assert(compressMasksVec(i)(i + 1) && compressMasksVec(i + 1)(i),
+          "a fused instruction pair must share one compression mask")
+      }
     }
   }
   // speculatively assign the instruction with an robIdx
@@ -1056,6 +1064,43 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
   XSPerfAccumulate("rob_compressed_instr", Mux(canOut, robCompressedInstr, 0.U))
   XSPerfAccumulate("rob_entries_saved", Mux(canOut, robInputInstr - validCount, 0.U))
   XSPerfAccumulate("rob_control_flow_shared_entry", Mux(canOut, robControlFlowSharedEntry, 0.U))
+  val allocatedRobGroups = io.in.zip(io.validVec).zip(needRobFlags).map {
+    case ((in, valid), needRob) => canOut && valid && in.bits.lastUop && needRob
+  }
+  val compressedGroupHasDivSqrt = compressMasksVec.map { mask =>
+    mask.asBools.zip(io.in).map { case (selected, in) =>
+      selected && FuType.isDivSqrt(in.bits.fuType)
+    }.reduce(_ || _)
+  }
+  val compressedGroupHasMul = compressMasksVec.map { mask =>
+    mask.asBools.zip(io.in).map { case (selected, in) =>
+      selected && in.bits.fuType === FuType.mul.U
+    }.reduce(_ || _)
+  }
+  val compressedGroupCrossesFtq = compressMasksVec.zipWithIndex.map { case (mask, i) =>
+    val ftqEnds = PopCount(mask & Cat(isLastFtqVec.reverse))
+    ftqEnds > 1.U || (ftqEnds === 1.U && !isLastFtqVec(i))
+  }
+  val allocatedCompressedGroups = allocatedRobGroups.zip(instrSizesVec).map {
+    case (allocated, size) => allocated && size > 1.U
+  }
+  XSPerfAccumulate("rob_compressed_groups_with_divsqrt", PopCount(
+    allocatedCompressedGroups.zip(compressedGroupHasDivSqrt).map { case (allocated, hasDivSqrt) => allocated && hasDivSqrt }
+  ))
+  XSPerfAccumulate("rob_compressed_groups_with_mul", PopCount(
+    allocatedCompressedGroups.zip(compressedGroupHasMul).map { case (allocated, hasMul) => allocated && hasMul }
+  ))
+  XSPerfAccumulate("rob_compressed_groups_cross_ftq", PopCount(
+    allocatedCompressedGroups.zip(compressedGroupCrossesFtq).map { case (allocated, crossesFtq) => allocated && crossesFtq }
+  ))
+  XSPerfAccumulate("rob_entries_saved_with_divsqrt", allocatedCompressedGroups.zip(compressedGroupHasDivSqrt)
+    .zip(instrSizesVec).map { case ((allocated, hasDivSqrt), size) =>
+      Mux(allocated && hasDivSqrt, size - 1.U, 0.U)
+    }.reduce(_ +& _))
+  XSPerfAccumulate("rob_entries_saved_cross_ftq", allocatedCompressedGroups.zip(compressedGroupCrossesFtq)
+    .zip(instrSizesVec).map { case ((allocated, crossesFtq), size) =>
+      Mux(allocated && crossesFtq, size - 1.U, 0.U)
+    }.reduce(_ +& _))
   XSPerfAccumulate("wait_cycle", !io.in.head.valid && dispatchCanAcc)
   for (i <- 1 to RenameWidth){
     XSPerfAccumulate(s"load_num_$i", PopCount(io.in.map(x => x.fire && FuType.isLoad(x.bits.fuType))) === i.U)

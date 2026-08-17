@@ -640,6 +640,141 @@ class RobCompressOnScShadowOnlyConfig(n: Int = 1) extends Config(
     s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowOnlyConfig " +
     s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
     s"robCompressEn=${core.backendParams.robCompressEn} tageReadFree=false scReadFree=true " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
+  )
+}
+
+class RobCompressOnScShadowGroup4Config(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      core.copy(
+        RobCompressEn = true,
+        RobCompressMaxGroupSize = 4,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = core.frontendParameters.bpuParameters.tageParameters.copy(
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowGroup4Config " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} tageReadFree=false scReadFree=true " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
+  )
+}
+
+class RobCompressOnScShadowGroup2Config(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      core.copy(
+        RobCompressEn = true,
+        RobCompressMaxGroupSize = 2,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = core.frontendParameters.bpuParameters.tageParameters.copy(
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowGroup2Config " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} tageReadFree=false scReadFree=true " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
+  )
+}
+
+class RobCompressOnScShadowNoLongLatencyConfig(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      core.copy(
+        RobCompressEn = true,
+        RobCompressLongLatency = false,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = core.frontendParameters.bpuParameters.tageParameters.copy(
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowNoLongLatencyConfig " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} tageReadFree=false scReadFree=true " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
+  )
+}
+
+class RobCompressOnScShadowNoCrossFtqConfig(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      core.copy(
+        RobCompressEn = true,
+        RobCompressAcrossFtq = false,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = core.frontendParameters.bpuParameters.tageParameters.copy(
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowNoCrossFtqConfig " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} tageReadFree=false scReadFree=true " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
     s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
     s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
   )

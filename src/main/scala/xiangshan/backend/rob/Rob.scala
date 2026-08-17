@@ -1385,6 +1385,12 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
   XSPerfAccumulate("waitBranchCycle", deqNotWritebacked && Itype.isBranch(debug_deqUop.traceBlockInPipe.itype))
   XSPerfAccumulate("waitLoadCycle", deqNotWritebacked   && deqUopCommitType === CommitType.LOAD)
   XSPerfAccumulate("waitStoreCycle", deqNotWritebacked  && deqUopCommitType === CommitType.STORE)
+  (1 to RenameWidth).foreach { size =>
+    XSPerfAccumulate(
+      s"waitNotWritebackedCompressSize$size",
+      deqNotWritebacked && instrSizeCommit.head === size.U
+    )
+  }
   XSPerfReference("robHeadPC",
     RegEnable(io.commits.info(0).debug_pc.getOrElse(0.U),
               0.U,

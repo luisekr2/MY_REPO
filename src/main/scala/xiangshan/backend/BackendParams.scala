@@ -39,6 +39,9 @@ case class BackendParams(
   iqWakeUpParams : Seq[WakeUpConfig],
   robCompressEn: Boolean = false,
   fusionEn: Boolean = true,
+  robCompressMaxGroupSize: Int = 8,
+  robCompressAcrossFtq: Boolean = true,
+  robCompressLongLatency: Boolean = true,
 ) {
 
   def debugEn(implicit p: Parameters): Boolean = p(DebugOptionsKey).EnableDifftest

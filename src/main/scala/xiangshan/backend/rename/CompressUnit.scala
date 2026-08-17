@@ -35,11 +35,16 @@ import chisel3.util._
 import chisel3.util.experimental.decode.EspressoMinimizer
 import freechips.rocketchip.rocket.DecodeLogic
 import xiangshan._
+import xiangshan.backend.fu.FuType
 
 class CompressUnit(implicit p: Parameters) extends XSModule{
+  require(backendParams.robCompressMaxGroupSize >= 2, "ROB compression group size must be at least two")
+  private val maxGroupSize = backendParams.robCompressMaxGroupSize.min(RenameWidth)
+
   val io = IO(new Bundle {
     val in = Vec(RenameWidth, Flipped(Valid(new DecodeOutUop)))
     val oddFtqVec = Vec(RenameWidth, Input(Bool()))
+    val fusionVec = Vec(RenameWidth, Input(Bool()))
     val out = new Bundle {
       val needRobFlags = Vec(RenameWidth, Output(Bool()))
       val instrSizes = Vec(RenameWidth, Output(UInt(log2Ceil(RenameWidth + 1).W)))
@@ -51,10 +56,25 @@ class CompressUnit(implicit p: Parameters) extends XSModule{
   val noExc = io.in.map(in => !in.bits.exceptionVec.orR && !TriggerAction.isDmode(in.bits.trigger))
   val uopCanCompress = io.in.map(_.bits.canRobCompress)
   val canCompress = io.in.zip(noExc).zip(uopCanCompress).map { case ((in, noExc), canComp) =>
-    in.valid && in.bits.lastUop && noExc && canComp && backendParams.robCompressEn.B
+    val latencyAllowed = backendParams.robCompressLongLatency.B || !FuType.isDivSqrt(in.bits.fuType)
+    in.valid && in.bits.lastUop && noExc && canComp && latencyAllowed && backendParams.robCompressEn.B
   }
-  val extendedCanCompress = canCompress.zip(io.oddFtqVec).flatMap { case (canComp, oddFtq) =>
-    Seq(canComp, canComp && !oddFtq)
+  val extendedCanCompress = canCompress.zip(io.oddFtqVec).zipWithIndex.flatMap {
+    case ((canComp, oddFtq), i) =>
+      def nominalBoundaryAfter(lane: Int): Boolean = (lane + 1) % maxGroupSize == 0
+      // Fusion clears the second lane and requires both architectural instructions to share a ROB entry.
+      // Replace a nominal boundary through a fusion pair with boundaries immediately before and after it.
+      val boundaryHere = nominalBoundaryAfter(i).B && !io.fusionVec(i)
+      val boundaryBeforeFusion = if (i + 1 < RenameWidth) {
+        nominalBoundaryAfter(i + 1).B && io.fusionVec(i + 1)
+      } else false.B
+      val boundaryAfterFusion = if (i > 0) {
+        nominalBoundaryAfter(i - 1).B && io.fusionVec(i - 1)
+      } else false.B
+      val groupSizeBoundary = boundaryHere || boundaryBeforeFusion || boundaryAfterFusion
+      val ftqBoundary = (!backendParams.robCompressAcrossFtq).B && io.in(i).bits.isLastInFtqEntry
+      val breakAfter = oddFtq || groupSizeBoundary || ftqBoundary
+      Seq(canComp, canComp && !breakAfter)
   }
 
   val compressTable = (0 until 1 << (2 * RenameWidth)).filter { baseCandidate =>

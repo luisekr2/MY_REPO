@@ -83,6 +83,9 @@ case class XSCoreParameters
   EnableCommitGHistDiff: Boolean = true,
   RobCompressEn: Boolean = false,
   FusionEnable: Boolean = true,
+  RobCompressMaxGroupSize: Int = 8,
+  RobCompressAcrossFtq: Boolean = true,
+  RobCompressLongLatency: Boolean = true,
   CacheLineSize: Int = 512,
   DecodeWidth: Int = 8,
   RenameWidth: Int = 8,
@@ -519,6 +522,9 @@ case class XSCoreParameters
     (if (EnableBackendV2Config) backend.BackendV2SchdParams.iqWakeUpParams else iqWakeUpParams),
     RobCompressEn,
     FusionEnable,
+    RobCompressMaxGroupSize,
+    RobCompressAcrossFtq,
+    RobCompressLongLatency,
   )
 
   // Parameters for trace extension.
