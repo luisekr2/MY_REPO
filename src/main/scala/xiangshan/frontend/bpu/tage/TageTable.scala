@@ -24,6 +24,67 @@ import utility.sram.SRAMTemplate
 import xiangshan.frontend.bpu.TageTableInfo
 import xiangshan.frontend.bpu.WriteBuffer
 
+/** Small hashed generation table used only to prove that prediction-time
+  * metadata still describes the entry being trained.  It does not participate
+  * in prediction and therefore cannot directly change prediction selection.
+  */
+class TageMutationVersionTable(
+    tableIdx:          Int,
+    implicit val info: TageTableInfo
+)(implicit p: Parameters) extends TageModule {
+  private val VersionWidth = 12
+  private val NumBuckets   = 16
+
+  class VersionTableIO extends TageBundle {
+    val predictSetIdx:     UInt                 = Input(UInt(SetIdxWidth.W))
+    val predictBankIdx:    UInt                 = Input(UInt(log2Ceil(NumBanks).W))
+    val predictVersion:    Vec[UInt]            = Output(Vec(NumWays, UInt(VersionWidth.W)))
+    val trainSetIdx:       UInt                 = Input(UInt(SetIdxWidth.W))
+    val trainBankIdx:      UInt                 = Input(UInt(log2Ceil(NumBanks).W))
+    val trainVersion:      Vec[UInt]            = Output(Vec(NumWays, UInt(VersionWidth.W)))
+    val staleCheckSetIdx:  UInt                 = Input(UInt(SetIdxWidth.W))
+    val staleCheckBankIdx: UInt                 = Input(UInt(log2Ceil(NumBanks).W))
+    val staleCheckVersion: Vec[UInt]            = Output(Vec(NumWays, UInt(VersionWidth.W)))
+    val writeReq:          Valid[TableWriteReq] = Flipped(Valid(new TableWriteReq))
+    val resetAll:          Bool                 = Input(Bool())
+  }
+  val io: VersionTableIO = IO(new VersionTableIO)
+
+  private val versions = RegInit(VecInit.fill(NumBanks)(
+    VecInit.fill(NumWays)(VecInit.fill(NumBuckets)(0.U(VersionWidth.W)))
+  ))
+
+  private def versionIndex(setIdx: UInt): UInt = {
+    val hashWidth = log2Ceil(NumBuckets)
+    setIdx(hashWidth - 1, 0) ^ setIdx(2 * hashWidth - 1, hashWidth)
+  }
+
+  for (wayIdx <- 0 until NumWays) {
+    io.predictVersion(wayIdx) := versions(io.predictBankIdx)(wayIdx)(versionIndex(io.predictSetIdx))
+    io.trainVersion(wayIdx) := versions(io.trainBankIdx)(wayIdx)(versionIndex(io.trainSetIdx))
+    io.staleCheckVersion(wayIdx) := versions(io.staleCheckBankIdx)(wayIdx)(versionIndex(io.staleCheckSetIdx))
+  }
+
+  when(io.resetAll) {
+    for {
+      bankIdx <- 0 until NumBanks
+      wayIdx  <- 0 until NumWays
+      bucket  <- 0 until NumBuckets
+    } {
+      versions(bankIdx)(wayIdx)(bucket) := versions(bankIdx)(wayIdx)(bucket) + 1.U
+    }
+  }.elsewhen(io.writeReq.valid) {
+    val writeBankIdx    = OHToUInt(io.writeReq.bits.bankMask)
+    val writeVersionIdx = versionIndex(io.writeReq.bits.setIdx)
+    for (wayIdx <- 0 until NumWays) {
+      when(io.writeReq.bits.wayMask(wayIdx)) {
+        versions(writeBankIdx)(wayIdx)(writeVersionIdx) :=
+          versions(writeBankIdx)(wayIdx)(writeVersionIdx) + 1.U
+      }
+    }
+  }
+}
+
 class TageTable(
     tableIdx:          Int,
     implicit val info: TageTableInfo // declare info as implicit val to pass it to Bundles / methods like TableReadReq
