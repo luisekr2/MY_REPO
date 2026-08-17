@@ -26,6 +26,7 @@ The archived XiangShan branches share the upstream XiangShan history. They are i
 - `archive/tage-operation-queue`: bank-local ordered TAGE operation-queue candidate.
 - `archive/sc-targeted-candidates`: SC/JAL/AUIPC/way-freshness candidate history.
 - `archive/specint-derived-workloads`: bare-metal mcf, libquantum, and sjeng sources, inputs, small ELF/BIN images, and curated SPECINT-derived reports.
+- `archive/custom-benchmarks-tools`: heat-calc ROB/TAGE stress and bzip2-derived bare-metal workloads plus build, run, normalization, and manifest scripts.
 - `archive/experiment-reports`: curated ROB-compression/TAGE/SC reports, including the OFF CoreMark HTML analysis.
 
 ## Retrieve reports and workloads
@@ -36,6 +37,9 @@ git clone --branch archive/experiment-reports \
 
 git clone --branch archive/specint-derived-workloads \
   https://github.com/luisekr2/MY_REPO.git specint-derived-workloads
+
+git clone --branch archive/custom-benchmarks-tools \
+  https://github.com/luisekr2/MY_REPO.git rob-custom-benchmarks
 ```
 
 ## Build notes
