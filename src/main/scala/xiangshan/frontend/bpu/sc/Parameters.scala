@@ -46,11 +46,13 @@ case class ScParameters(
     ThresholdInit:       Int = 1130, // magic number,greater than min and less than max
     NumBanks:            Int = 2,
     WriteBufferSize:     Int = 4,
+    ReadFreeTraining:    Boolean = false,
     EnableScTrace:       Boolean = false
 ) {}
 
 trait HasScParameters extends HasBpuParameters {
-  def scParameters: ScParameters = bpuParameters.scParameters
+  final def ScRowVersionWidth: Int          = 12
+  def scParameters:            ScParameters = bpuParameters.scParameters
 
   def PathEnable:   Boolean = scParameters.PathEnable
   def GlobalEnable: Boolean = scParameters.GlobalEnable
@@ -94,8 +96,9 @@ trait HasScParameters extends HasBpuParameters {
     s"ThresholdInit($ThresholdInit) should be in [$MinThreshold, $MaxThreshold]"
   )
 
-  def ShiftBits:       Int = FetchBlockAlignWidth - BankWidth - instOffsetBits
-  def WriteBufferSize: Int = scParameters.WriteBufferSize
+  def ShiftBits:          Int     = FetchBlockAlignWidth - BankWidth - instOffsetBits
+  def WriteBufferSize:    Int     = scParameters.WriteBufferSize
+  def ScReadFreeTraining: Boolean = scParameters.ReadFreeTraining
 
   def EnableScTrace: Boolean = scParameters.EnableScTrace
 }

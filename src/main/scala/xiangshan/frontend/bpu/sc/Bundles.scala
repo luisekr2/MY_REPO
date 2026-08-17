@@ -48,6 +48,7 @@ class ScEntry(implicit p: Parameters) extends ScBundle {
 class ScTableSramWriteReq(val numSets: Int, val numWays: Int)(implicit p: Parameters) extends WriteReqBundle
     with HasScParameters {
   val setIdx:           UInt              = UInt(log2Ceil(numSets).W)
+  val baseVersion:      UInt              = UInt(ScRowVersionWidth.W)
   override val wayMask: Option[Vec[Bool]] = Some(Vec(numWays, Bool()))
   override val wayData: Option[Vec[UInt]] = Some(Vec(numWays, UInt((new ScEntry).getWidth.W)))
 
@@ -77,6 +78,26 @@ class ScMeta(implicit p: Parameters) extends ScBundle with HasScParameters {
   val tagePredValid:   Vec[Bool] = Vec(NumBtbResultEntries, Bool())
   val useScPred:       Vec[Bool] = Vec(NumWays, Bool())
   val sumAboveThres:   Vec[Bool] = Vec(NumWays, Bool())
+
+  // Functional upper-bound prototype for conflict-triggered read-free SC
+  // training.  These are the coherent values actually consumed by the
+  // prediction and a row mutation version for each SC table.
+  // Store raw counter bits because ChiselDB cannot traverse SInt fields in
+  // deeply nested metadata bundles.
+  val snapshotPathEntries: Vec[Vec[UInt]] =
+    Vec(NumPathTables, Vec(NumWays, UInt(CtrWidth.W)))
+  val snapshotGlobalEntries: Vec[Vec[UInt]] =
+    Vec(NumGlobalTables, Vec(NumWays, UInt(CtrWidth.W)))
+  val snapshotBWEntries: Vec[Vec[UInt]] =
+    Vec(NumBWTables, Vec(NumWays, UInt(CtrWidth.W)))
+  val snapshotImliEntries:    Vec[UInt] = Vec(NumWays, UInt(CtrWidth.W))
+  val snapshotBiasEntries:    Vec[UInt] = Vec(BiasTableNumWays, UInt(CtrWidth.W))
+  val snapshotPathVersions:   Vec[UInt] = Vec(NumPathTables, UInt(ScRowVersionWidth.W))
+  val snapshotGlobalVersions: Vec[UInt] = Vec(NumGlobalTables, UInt(ScRowVersionWidth.W))
+  val snapshotBWVersions:     Vec[UInt] = Vec(NumBWTables, UInt(ScRowVersionWidth.W))
+  val snapshotImliVersion:    UInt      = UInt(ScRowVersionWidth.W)
+  val snapshotBiasVersion:    UInt      = UInt(ScRowVersionWidth.W)
+  val snapshotBankMask:       UInt      = UInt(NumBanks.W)
 
   // for debug
   val debug_scPathTakenVec:   Option[Vec[Bool]] = Some(Vec(NumWays, Bool()))

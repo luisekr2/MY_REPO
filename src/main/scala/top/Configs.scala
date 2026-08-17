@@ -110,6 +110,7 @@ class MinimalConfig(n: Int = 1) extends Config(
                 // NumWay = 2
               ),
               tageParameters = TageParameters(
+                ReadFreeTraining = true,
                 TableInfos = Seq(
                   // Size, NumWays, HistoryLength
                   new TageTableInfo(1024, 2, 6),
@@ -550,6 +551,97 @@ class RobCompressOnConfig(n: Int = 1) extends Config(
     s"robCompressEn=${core.backendParams.robCompressEn} fusionEn=${core.backendParams.fusionEn} " +
     s"decodeWidth=${core.DecodeWidth} renameWidth=${core.RenameWidth} " +
     s"commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
+  )
+}
+
+class RobCompressOffReadFreeTrainingConfig(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map(_.copy(RobCompressEn = false))
+  })
+) {
+  private val core = this(XSTileKey).head
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOffReadFreeTrainingConfig " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} readFreeTraining=true " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
+  )
+}
+
+class RobCompressOnStaleSafeReadFreeConfig(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map(_.copy(RobCompressEn = true))
+  })
+) {
+  private val core = this(XSTileKey).head
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnStaleSafeReadFreeConfig " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} readFreeTraining=true staleSafe=true " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
+  )
+}
+
+class RobCompressOnTageScReadFreeConfig(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      core.copy(
+        RobCompressEn = true,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnTageScReadFreeConfig " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} tageReadFree=true scReadFree=true " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
+  )
+}
+
+/**
+  * Keep the branch-isolated baseline TAGE training path byte-for-byte active
+  * while enabling only the stale-safe retained-shadow SC training bypass.
+  * This isolates whether SC conflict removal can add performance without the
+  * predictor-trajectory changes observed in TAGE read-free experiments.
+  */
+class RobCompressOnScShadowOnlyConfig(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      core.copy(
+        RobCompressEn = true,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = core.frontendParameters.bpuParameters.tageParameters.copy(
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowOnlyConfig " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} tageReadFree=false scReadFree=true " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
   )
 }
 

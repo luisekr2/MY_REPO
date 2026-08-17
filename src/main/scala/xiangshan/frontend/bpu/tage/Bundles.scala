@@ -95,7 +95,9 @@ class EntrySramWriteReq(implicit p: Parameters, info: TageTableInfo) extends Wri
   override def cnt: Option[SaturateCounter] = Some(entry.takenCtr)
 }
 
-class UsefulCtrSramWriteReq(implicit p: Parameters, info: TageTableInfo) extends TageBundle {
+class UsefulCtrSramWriteReq(implicit p: Parameters, info: TageTableInfo)
+    extends WriteReqBundle
+    with HasTageParameters {
   val setIdx:    UInt            = UInt(SetIdxWidth.W)
   val usefulCtr: SaturateCounter = UsefulCounter()
 }
@@ -122,6 +124,17 @@ class TageMetaEntry(implicit p: Parameters) extends TageBundle {
 
 class TageMeta(implicit p: Parameters) extends TageBundle {
   val entries: Vec[TageMetaEntry] = Vec(NumBtbResultEntries, new TageMetaEntry)
+
+  // Experimental read-free training snapshot. Prediction already reads every
+  // way in every tagged table. Retaining that state allows fallback training
+  // to avoid contending with prediction for the single SRAM read port.
+  // Freshness/version validation is intentionally left for the next revision.
+  val snapshotEntries: Vec[Vec[TageEntry]] =
+    Vec(NumTables, Vec(MaxNumWays, new TageEntry))
+  val snapshotUsefulCtrs: Vec[Vec[SaturateCounter]] =
+    Vec(NumTables, Vec(MaxNumWays, UsefulCounter()))
+  val snapshotVersions: Vec[Vec[UInt]] =
+    Vec(NumTables, Vec(MaxNumWays, UInt(12.W)))
 }
 
 class TageFoldedHist(implicit p: Parameters, info: TageTableInfo) extends TageBundle {

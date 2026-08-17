@@ -33,12 +33,23 @@ class ScTable(
 )(implicit p: Parameters)
     extends ScModule with HasScParameters with Helpers {
   class ScTableIO extends ScBundle {
-    val predictReadReq:  Valid[ScTableReq] = Flipped(Valid(new ScTableReq(numSets, numWays)))
-    val predictReadResp: Vec[ScEntry]      = Output(Vec(numWays, new ScEntry()))
-    val trainReadReq:    Valid[ScTableReq] = Flipped(Valid(new ScTableReq(numSets, numWays)))
-    val trainReadResp:   Vec[ScEntry]      = Output(Vec(numWays, new ScEntry()))
-    val update:          ScTableTrain      = Input(new ScTableTrain(numSets, numWays))
-    val sramResetDone:   Bool              = Output(Bool())
+    val predictReadReq:    Valid[ScTableReq] = Flipped(Valid(new ScTableReq(numSets, numWays)))
+    val predictReadResp:   Vec[ScEntry]      = Output(Vec(numWays, new ScEntry()))
+    val trainReadReq:      Valid[ScTableReq] = Flipped(Valid(new ScTableReq(numSets, numWays)))
+    val trainReadResp:     Vec[ScEntry]      = Output(Vec(numWays, new ScEntry()))
+    val update:            ScTableTrain      = Input(new ScTableTrain(numSets, numWays))
+    val predictVersion:    UInt              = Output(UInt(ScRowVersionWidth.W))
+    val trainVersion:      UInt              = Output(UInt(ScRowVersionWidth.W))
+    val commitSetIdx:      UInt              = Input(UInt(log2Ceil(numSets).W))
+    val commitBankMask:    UInt              = Input(UInt(NumBanks.W))
+    val commitVersion:     UInt              = Output(UInt(ScRowVersionWidth.W))
+    val repairSetIdx:      UInt              = Input(UInt(log2Ceil(numSets).W))
+    val repairBankMask:    UInt              = Input(UInt(NumBanks.W))
+    val repairHit:         Bool              = Output(Bool())
+    val repairBaseVersion: UInt              = Output(UInt(ScRowVersionWidth.W))
+    val repairWayMask:     Vec[Bool]         = Output(Vec(numWays, Bool()))
+    val repairEntries:     Vec[ScEntry]      = Output(Vec(numWays, new ScEntry()))
+    val sramResetDone:     Bool              = Output(Bool())
   }
 
   val io = IO(new ScTableIO())
@@ -72,6 +83,8 @@ class ScTable(
       numPorts = 1,
       numWays = numWays,
       hasWayMask = true,
+      hasLookup = ScReadFreeTraining,
+      hasSecondLookup = ScReadFreeTraining,
       nameSuffix = s"sc${tableType}${tableIdx}_${bankIdx}"
     ))
   )
@@ -85,13 +98,67 @@ class ScTable(
     assert(!(predictReadValid && trainReadValid), s"read conflict in sc${tableType}${tableIdx}_${bankIdx}")
   }
 
+  // A row version represents accepted logical updates, including updates
+  // retained in the write buffer but not yet drained to SRAM.
+  private val rowVersions    = RegInit(VecInit.fill(NumBanks)(VecInit.fill(numSets)(0.U(ScRowVersionWidth.W))))
+  private val predictBankIdx = OHToUInt(io.predictReadReq.bits.bankMask)
+  private val trainBankIdx   = OHToUInt(io.trainReadReq.bits.bankMask)
+  io.predictVersion := rowVersions(predictBankIdx)(io.predictReadReq.bits.setIdx)
+  io.trainVersion   := rowVersions(trainBankIdx)(io.trainReadReq.bits.setIdx)
+  io.commitVersion  := rowVersions(OHToUInt(io.commitBankMask))(io.commitSetIdx)
+
   io.sramResetDone := sram.map(_.io.resetDone).reduce(_ && _)
 
   private val predictReadBankMaskNext = RegEnable(io.predictReadReq.bits.bankMask, io.predictReadReq.valid)
-  io.predictReadResp := Mux1H(predictReadBankMaskNext, sram.map(_.io.r.resp.data))
+  private val rawPredictReadResp      = Mux1H(predictReadBankMaskNext, sram.map(_.io.r.resp.data))
 
   private val trainReadBankMaskNext = RegEnable(io.trainReadReq.bits.bankMask, io.trainReadReq.valid)
-  io.trainReadResp := Mux1H(trainReadBankMaskNext, sram.map(_.io.r.resp.data))
+  private val rawTrainReadResp      = Mux1H(trainReadBankMaskNext, sram.map(_.io.r.resp.data))
+
+  if (ScReadFreeTraining) {
+    val predictLookupNext = Wire(Vec(NumBanks, Valid(new ScTableSramWriteReq(numRows, numWays))))
+    val trainLookupNext   = Wire(Vec(NumBanks, Valid(new ScTableSramWriteReq(numRows, numWays))))
+    val repairLookup      = Wire(Vec(NumBanks, Valid(new ScTableSramWriteReq(numRows, numWays))))
+    writeBuffer.zipWithIndex.foreach { case (buffer, bankIdx) =>
+      val predictValid = io.predictReadReq.valid && io.predictReadReq.bits.bankMask(bankIdx)
+      val trainValid   = io.trainReadReq.valid && io.trainReadReq.bits.bankMask(bankIdx)
+      buffer.io.lookupSetIdx.get := Mux(
+        predictValid,
+        io.predictReadReq.bits.setIdx,
+        io.trainReadReq.bits.setIdx
+      )
+      predictLookupNext(bankIdx)       := RegEnable(buffer.io.lookupResp.get.head, predictValid)
+      trainLookupNext(bankIdx)         := RegEnable(buffer.io.lookupResp.get.head, trainValid)
+      buffer.io.secondLookupSetIdx.get := io.repairSetIdx
+      repairLookup(bankIdx)            := buffer.io.secondLookupResp.get.head
+    }
+
+    def overlay(raw: Vec[ScEntry], lookup: Valid[ScTableSramWriteReq]): Vec[ScEntry] =
+      VecInit(raw.zipWithIndex.map { case (entry, wayIdx) =>
+        Mux(
+          lookup.valid && lookup.bits.wayMask.get(wayIdx),
+          lookup.bits.wayData.get(wayIdx).asTypeOf(new ScEntry()),
+          entry
+        )
+      })
+
+    val predictLookup = Mux1H(predictReadBankMaskNext, predictLookupNext)
+    val trainLookup   = Mux1H(trainReadBankMaskNext, trainLookupNext)
+    io.predictReadResp := overlay(rawPredictReadResp, predictLookup)
+    io.trainReadResp   := overlay(rawTrainReadResp, trainLookup)
+    val repairEntry = Mux1H(io.repairBankMask, repairLookup)
+    io.repairHit         := repairEntry.valid
+    io.repairBaseVersion := repairEntry.bits.baseVersion
+    io.repairWayMask     := repairEntry.bits.wayMask.get
+    io.repairEntries     := VecInit(repairEntry.bits.wayData.get.map(_.asTypeOf(new ScEntry())))
+  } else {
+    io.predictReadResp   := rawPredictReadResp
+    io.trainReadResp     := rawTrainReadResp
+    io.repairHit         := false.B
+    io.repairBaseVersion := 0.U
+    io.repairWayMask     := VecInit.fill(numWays)(false.B)
+    io.repairEntries     := VecInit.fill(numWays)(0.U.asTypeOf(new ScEntry()))
+  }
 
   // update path table
   private val updateValid    = io.update.valid && io.update.wayMask.reduce(_ || _)
@@ -99,11 +166,17 @@ class ScTable(
   private val updateWayMask  = io.update.wayMask
   private val updateBankMask = io.update.bankMask
 
-  writeBuffer.zip(updateBankMask.asBools).foreach {
-    case (buffer, bankEnable) =>
+  when(updateValid) {
+    val bankIdx = OHToUInt(updateBankMask)
+    rowVersions(bankIdx)(updateIdx) := rowVersions(bankIdx)(updateIdx) + 1.U
+  }
+
+  writeBuffer.zip(updateBankMask.asBools).zipWithIndex.foreach {
+    case ((buffer, bankEnable), bankIdx) =>
       val writeValid = updateValid && bankEnable
-      buffer.io.write.head.valid       := writeValid
-      buffer.io.write.head.bits.setIdx := updateIdx
+      buffer.io.write.head.valid            := writeValid
+      buffer.io.write.head.bits.setIdx      := updateIdx
+      buffer.io.write.head.bits.baseVersion := rowVersions(bankIdx)(updateIdx)
       buffer.io.write.head.bits.wayMask.get := Mux(
         writeValid,
         updateWayMask,

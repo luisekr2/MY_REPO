@@ -203,6 +203,13 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
     VecInit.fill(BiasTableNumWays)(0.U.asTypeOf(new ScEntry()))
   )
 
+  private val s1_pathVersions     = RegEnable(VecInit(pathTable.map(_.io.predictVersion)), s0_fire)
+  private val s1_globalVersions   = RegEnable(VecInit(globalTable.map(_.io.predictVersion)), s0_fire)
+  private val s1_bwVersions       = RegEnable(VecInit(bwTable.map(_.io.predictVersion)), s0_fire)
+  private val s1_imliVersion      = RegEnable(imliTable.io.predictVersion, s0_fire)
+  private val s1_biasVersion      = RegEnable(biasTable.io.predictVersion, s0_fire)
+  private val s1_snapshotBankMask = RegEnable(s0_bankMask, s0_fire)
+
   private val s1_mergeResp = VecInit(s1_pathResp ++ s1_globalResp ++ s1_bwResp ++ Seq(s1_imliResp))
 
   private val s1_pathPercsum =
@@ -224,6 +231,18 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
   private val s2_startPc = RegEnable(s1_startPc, s1_fire)
 
   private val s2_biasPercsum = VecInit(s1_biasPercsum.map(RegEnable(_, s1_fire)))
+
+  private val s2_snapshotPathEntries    = RegEnable(s1_pathResp, s1_fire)
+  private val s2_snapshotGlobalEntries  = RegEnable(s1_globalResp, s1_fire)
+  private val s2_snapshotBWEntries      = RegEnable(s1_bwResp, s1_fire)
+  private val s2_snapshotImliEntries    = RegEnable(s1_imliResp, s1_fire)
+  private val s2_snapshotBiasEntries    = RegEnable(s1_biasResp, s1_fire)
+  private val s2_snapshotPathVersions   = RegEnable(s1_pathVersions, s1_fire)
+  private val s2_snapshotGlobalVersions = RegEnable(s1_globalVersions, s1_fire)
+  private val s2_snapshotBWVersions     = RegEnable(s1_bwVersions, s1_fire)
+  private val s2_snapshotImliVersion    = RegEnable(s1_imliVersion, s1_fire)
+  private val s2_snapshotBiasVersion    = RegEnable(s1_biasVersion, s1_fire)
+  private val s2_snapshotBankMask       = RegEnable(s1_snapshotBankMask, s1_fire)
 
   private val s2_bwPercsum     = VecInit(s1_bwPercsum.map(RegEnable(_, s1_fire)))
   private val s2_imliPercsum   = VecInit(s1_imliPercsum.map(RegEnable(_, s1_fire)))
@@ -333,6 +352,26 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
   io.meta.tagePredValid := RegEnable(s2_providerValid, s2_fire)
   io.meta.useScPred     := RegEnable(s2_useScPred, s2_fire)
   io.meta.sumAboveThres := RegEnable(s2_sumAboveThres, s2_fire)
+  io.meta.snapshotPathEntries := RegEnable(
+    VecInit(s2_snapshotPathEntries.map(row => VecInit(row.map(_.ctr.value.asUInt)))),
+    s2_fire
+  )
+  io.meta.snapshotGlobalEntries := RegEnable(
+    VecInit(s2_snapshotGlobalEntries.map(row => VecInit(row.map(_.ctr.value.asUInt)))),
+    s2_fire
+  )
+  io.meta.snapshotBWEntries := RegEnable(
+    VecInit(s2_snapshotBWEntries.map(row => VecInit(row.map(_.ctr.value.asUInt)))),
+    s2_fire
+  )
+  io.meta.snapshotImliEntries    := RegEnable(VecInit(s2_snapshotImliEntries.map(_.ctr.value.asUInt)), s2_fire)
+  io.meta.snapshotBiasEntries    := RegEnable(VecInit(s2_snapshotBiasEntries.map(_.ctr.value.asUInt)), s2_fire)
+  io.meta.snapshotPathVersions   := RegEnable(s2_snapshotPathVersions, s2_fire)
+  io.meta.snapshotGlobalVersions := RegEnable(s2_snapshotGlobalVersions, s2_fire)
+  io.meta.snapshotBWVersions     := RegEnable(s2_snapshotBWVersions, s2_fire)
+  io.meta.snapshotImliVersion    := RegEnable(s2_snapshotImliVersion, s2_fire)
+  io.meta.snapshotBiasVersion    := RegEnable(s2_snapshotBiasVersion, s2_fire)
+  io.meta.snapshotBankMask       := RegEnable(s2_snapshotBankMask, s2_fire)
 
   io.meta.debug_scPathTakenVec.get   := VecInit(s2_pathPred.map(RegEnable(_, s2_fire))) // for performance counter
   io.meta.debug_scGlobalTakenVec.get := VecInit(s2_globalPred.map(RegEnable(_, s2_fire)))
@@ -394,41 +433,278 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
     })
   private val t0_needWrite    = t0_writeValidVec.reduce(_ || _)
   private val t0_bankConflict = t0_needWrite && s0_fire && t0_bankMask === s0_bankMask
-  io.trainReady := !t0_bankConflict
+  private val t0_snapshotIdentityMatch =
+    t0_meta.snapshotBankMask === t0_bankMask &&
+      t0_meta.debug_predPathIdx.get.zip(t0_pathIdx).map { case (pred, train) => pred === train }.reduce(_ && _) &&
+      t0_meta.debug_predGlobalIdx.get.zip(t0_globalIdx).map { case (pred, train) => pred === train }.reduce(_ && _) &&
+      t0_meta.debug_predBWIdx.get.zip(t0_bwIdx).map { case (pred, train) => pred === train }.reduce(_ && _) &&
+      t0_meta.debug_predImliIdx.get === t0_imliIdx &&
+      t0_meta.debug_predBiasIdx.get === t0_biasIdx
+
+  // Row versions change only when an update reaches t2.  Consequently, a
+  // snapshot can still look fresh while an older update to the same row is in
+  // t1/t2.  Track those accepted mutations as reservations and keep the
+  // read-free path from consuming a soon-to-be-stale snapshot.  The request is
+  // then retried through the ordinary coherent SRAM + write-buffer read path.
+  // This preserves training order without storing or replaying training data.
+  private val pending1Valid     = RegNext(t0_fire && t0_needWrite, false.B)
+  private val pending1BankMask  = RegEnable(t0_bankMask, t0_fire && t0_needWrite)
+  private val pending1PathIdx   = RegEnable(VecInit(t0_pathIdx), t0_fire && t0_needWrite)
+  private val pending1GlobalIdx = RegEnable(VecInit(t0_globalIdx), t0_fire && t0_needWrite)
+  private val pending1BWIdx     = RegEnable(VecInit(t0_bwIdx), t0_fire && t0_needWrite)
+  private val pending1ImliIdx   = RegEnable(t0_imliIdx, t0_fire && t0_needWrite)
+  private val pending1BiasIdx   = RegEnable(t0_biasIdx, t0_fire && t0_needWrite)
+  private val pending2Valid     = RegNext(pending1Valid, false.B)
+  private val pending2BankMask  = RegEnable(pending1BankMask, pending1Valid)
+  private val pending2PathIdx   = RegEnable(pending1PathIdx, pending1Valid)
+  private val pending2GlobalIdx = RegEnable(pending1GlobalIdx, pending1Valid)
+  private val pending2BWIdx     = RegEnable(pending1BWIdx, pending1Valid)
+  private val pending2ImliIdx   = RegEnable(pending1ImliIdx, pending1Valid)
+  private val pending2BiasIdx   = RegEnable(pending1BiasIdx, pending1Valid)
+
+  private def overlapsPending(
+      valid:     Bool,
+      bankMask:  UInt,
+      pathIdx:   Seq[UInt],
+      globalIdx: Seq[UInt],
+      bwIdx:     Seq[UInt],
+      imliIdx:   UInt,
+      biasIdx:   UInt
+  ): Bool = {
+    val sameBank = bankMask === t0_bankMask
+    val sameRow =
+      pathIdx.zip(t0_pathIdx).map { case (pending, current) => pending === current }.reduce(_ || _) ||
+        globalIdx.zip(t0_globalIdx).map { case (pending, current) => pending === current }.reduce(_ || _) ||
+        bwIdx.zip(t0_bwIdx).map { case (pending, current) => pending === current }.reduce(_ || _) ||
+        imliIdx === t0_imliIdx || biasIdx === t0_biasIdx
+    valid && sameBank && sameRow
+  }
+  private val t0_pendingMutationHazard =
+    overlapsPending(
+      pending1Valid,
+      pending1BankMask,
+      pending1PathIdx,
+      pending1GlobalIdx,
+      pending1BWIdx,
+      pending1ImliIdx,
+      pending1BiasIdx
+    ) || overlapsPending(
+      pending2Valid,
+      pending2BankMask,
+      pending2PathIdx,
+      pending2GlobalIdx,
+      pending2BWIdx,
+      pending2ImliIdx,
+      pending2BiasIdx
+    )
   pathTable.zip(t0_pathIdx).foreach { case (table, idx) =>
-    table.io.trainReadReq.valid         := t0_fire && t0_needWrite && PathEnable.B
+    table.io.repairSetIdx   := idx
+    table.io.repairBankMask := t0_bankMask
+  }
+  globalTable.zip(t0_globalIdx).foreach { case (table, idx) =>
+    table.io.repairSetIdx   := idx
+    table.io.repairBankMask := t0_bankMask
+  }
+  bwTable.zip(t0_bwIdx).foreach { case (table, idx) =>
+    table.io.repairSetIdx   := idx
+    table.io.repairBankMask := t0_bankMask
+  }
+  imliTable.io.repairSetIdx   := t0_imliIdx
+  imliTable.io.repairBankMask := t0_bankMask
+  biasTable.io.repairSetIdx   := t0_biasIdx
+  biasTable.io.repairBankMask := t0_bankMask
+
+  // A retained write-buffer row contains every way mutation from baseVersion
+  // through trainVersion.  If the prediction snapshot lies in that modular
+  // interval, overlaying its retained ways reconstructs the current logical
+  // row without touching the single-ported SRAM.
+  private def shadowCovers(snapshot: UInt, base: UInt, current: UInt, hit: Bool): Bool = {
+    val fromBase  = snapshot - base
+    val toCurrent = current - snapshot
+    hit && !fromBase(ScRowVersionWidth - 1) && !toCurrent(ScRowVersionWidth - 1)
+  }
+
+  private def repairSnapshot(
+      snapshotEntries: Vec[UInt],
+      table:           ScTable,
+      snapshotVersion: UInt
+  ): Vec[UInt] =
+    VecInit(snapshotEntries.zipWithIndex.map { case (entry, wayIdx) =>
+      Mux(table.io.repairWayMask(wayIdx), table.io.repairEntries(wayIdx).asUInt, entry)
+    })
+
+  private val t0_pathFresh = t0_meta.snapshotPathVersions.zip(pathTable).map { case (snap, table) =>
+    snap === table.io.trainVersion
+  }
+  private val t0_globalFresh = t0_meta.snapshotGlobalVersions.zip(globalTable).map { case (snap, table) =>
+    snap === table.io.trainVersion
+  }
+  private val t0_bwFresh = t0_meta.snapshotBWVersions.zip(bwTable).map { case (snap, table) =>
+    snap === table.io.trainVersion
+  }
+  private val t0_imliFresh = t0_meta.snapshotImliVersion === imliTable.io.trainVersion
+  private val t0_biasFresh = t0_meta.snapshotBiasVersion === biasTable.io.trainVersion
+
+  private val t0_pathShadowCovers = t0_meta.snapshotPathVersions.zip(pathTable).map { case (snap, table) =>
+    shadowCovers(snap, table.io.repairBaseVersion, table.io.trainVersion, table.io.repairHit)
+  }
+  private val t0_globalShadowCovers = t0_meta.snapshotGlobalVersions.zip(globalTable).map { case (snap, table) =>
+    shadowCovers(snap, table.io.repairBaseVersion, table.io.trainVersion, table.io.repairHit)
+  }
+  private val t0_bwShadowCovers = t0_meta.snapshotBWVersions.zip(bwTable).map { case (snap, table) =>
+    shadowCovers(snap, table.io.repairBaseVersion, table.io.trainVersion, table.io.repairHit)
+  }
+  private val t0_imliShadowCovers = shadowCovers(
+    t0_meta.snapshotImliVersion,
+    imliTable.io.repairBaseVersion,
+    imliTable.io.trainVersion,
+    imliTable.io.repairHit
+  )
+  private val t0_biasShadowCovers = shadowCovers(
+    t0_meta.snapshotBiasVersion,
+    biasTable.io.repairBaseVersion,
+    biasTable.io.trainVersion,
+    biasTable.io.repairHit
+  )
+
+  private val t0_repairedPathEntries = VecInit(t0_meta.snapshotPathEntries.zip(pathTable).zipWithIndex.map {
+    case ((entries, table), i) =>
+      Mux(t0_pathFresh(i), entries, repairSnapshot(entries, table, t0_meta.snapshotPathVersions(i)))
+  })
+  private val t0_repairedGlobalEntries = VecInit(t0_meta.snapshotGlobalEntries.zip(globalTable).zipWithIndex.map {
+    case ((entries, table), i) =>
+      Mux(t0_globalFresh(i), entries, repairSnapshot(entries, table, t0_meta.snapshotGlobalVersions(i)))
+  })
+  private val t0_repairedBWEntries = VecInit(t0_meta.snapshotBWEntries.zip(bwTable).zipWithIndex.map {
+    case ((entries, table), i) =>
+      Mux(t0_bwFresh(i), entries, repairSnapshot(entries, table, t0_meta.snapshotBWVersions(i)))
+  })
+  private val t0_repairedImliEntries = Mux(
+    t0_imliFresh,
+    t0_meta.snapshotImliEntries,
+    repairSnapshot(t0_meta.snapshotImliEntries, imliTable, t0_meta.snapshotImliVersion)
+  )
+  private val t0_repairedBiasEntries = Mux(
+    t0_biasFresh,
+    t0_meta.snapshotBiasEntries,
+    repairSnapshot(t0_meta.snapshotBiasEntries, biasTable, t0_meta.snapshotBiasVersion)
+  )
+  private val t0_repairedPathVersions = VecInit(t0_meta.snapshotPathVersions.zip(pathTable).zipWithIndex.map {
+    case ((snap, table), i) => Mux(t0_pathFresh(i), snap, table.io.trainVersion)
+  })
+  private val t0_repairedGlobalVersions = VecInit(t0_meta.snapshotGlobalVersions.zip(globalTable).zipWithIndex.map {
+    case ((snap, table), i) => Mux(t0_globalFresh(i), snap, table.io.trainVersion)
+  })
+  private val t0_repairedBWVersions = VecInit(t0_meta.snapshotBWVersions.zip(bwTable).zipWithIndex.map {
+    case ((snap, table), i) => Mux(t0_bwFresh(i), snap, table.io.trainVersion)
+  })
+  private val t0_repairedImliVersion = Mux(t0_imliFresh, t0_meta.snapshotImliVersion, imliTable.io.trainVersion)
+  private val t0_repairedBiasVersion = Mux(t0_biasFresh, t0_meta.snapshotBiasVersion, biasTable.io.trainVersion)
+
+  private val t0_forwardedPathEntries    = WireInit(t0_repairedPathEntries)
+  private val t0_forwardedGlobalEntries  = WireInit(t0_repairedGlobalEntries)
+  private val t0_forwardedBWEntries      = WireInit(t0_repairedBWEntries)
+  private val t0_forwardedImliEntries    = WireInit(t0_repairedImliEntries)
+  private val t0_forwardedBiasEntries    = WireInit(t0_repairedBiasEntries)
+  private val t0_forwardedPathVersions   = WireInit(t0_repairedPathVersions)
+  private val t0_forwardedGlobalVersions = WireInit(t0_repairedGlobalVersions)
+  private val t0_forwardedBWVersions     = WireInit(t0_repairedBWVersions)
+  private val t0_forwardedImliVersion    = WireInit(t0_repairedImliVersion)
+  private val t0_forwardedBiasVersion    = WireInit(t0_repairedBiasVersion)
+  private val t0_snapshotFresh =
+    (!PathEnable.B || t0_pathFresh.zip(t0_pathShadowCovers).map { case (fresh, covered) => fresh || covered }.reduce(
+      _ && _
+    )) &&
+      (!GlobalEnable.B || !t0_commonHR.valid || t0_globalFresh.zip(t0_globalShadowCovers).map {
+        case (fresh, covered) => fresh || covered
+      }.reduce(_ && _)) &&
+      (!BWEnable.B || !t0_commonHR.valid || t0_bwFresh.zip(t0_bwShadowCovers).map {
+        case (fresh, covered) => fresh || covered
+      }.reduce(_ && _)) &&
+      (!ImliEnable.B || t0_imliFresh || t0_imliShadowCovers) &&
+      (!BiasEnable.B || t0_biasFresh || t0_biasShadowCovers)
+  private val t0_useReadFreeSnapshot =
+    ScReadFreeTraining.B && t0_bankConflict && t0_snapshotIdentityMatch && t0_snapshotFresh
+  private val t0_needRead              = t0_needWrite && !t0_useReadFreeSnapshot
+  private val t0_unavoidedBankConflict = t0_needRead && s0_fire && t0_bankMask === s0_bankMask
+  io.trainReady := !t0_unavoidedBankConflict
+  pathTable.zip(t0_pathIdx).foreach { case (table, idx) =>
+    table.io.trainReadReq.valid         := t0_fire && t0_needRead && PathEnable.B
     table.io.trainReadReq.bits.setIdx   := idx
     table.io.trainReadReq.bits.bankMask := t0_bankMask
   }
   globalTable.zip(t0_globalIdx).foreach { case (table, idx) =>
-    table.io.trainReadReq.valid         := t0_fire && t0_needWrite && t0_commonHR.valid && GlobalEnable.B
+    table.io.trainReadReq.valid         := t0_fire && t0_needRead && t0_commonHR.valid && GlobalEnable.B
     table.io.trainReadReq.bits.setIdx   := idx
     table.io.trainReadReq.bits.bankMask := t0_bankMask
   }
   bwTable.zip(t0_bwIdx).foreach { case (table, idx) =>
-    table.io.trainReadReq.valid         := t0_fire && t0_needWrite && t0_commonHR.valid && BWEnable.B
+    table.io.trainReadReq.valid         := t0_fire && t0_needRead && t0_commonHR.valid && BWEnable.B
     table.io.trainReadReq.bits.setIdx   := idx
     table.io.trainReadReq.bits.bankMask := t0_bankMask
   }
-  imliTable.io.trainReadReq.valid         := t0_fire && t0_needWrite && ImliEnable.B
+  imliTable.io.trainReadReq.valid         := t0_fire && t0_needRead && ImliEnable.B
   imliTable.io.trainReadReq.bits.setIdx   := t0_imliIdx
   imliTable.io.trainReadReq.bits.bankMask := t0_bankMask
 
-  biasTable.io.trainReadReq.valid         := t0_fire && t0_needWrite && BiasEnable.B
+  biasTable.io.trainReadReq.valid         := t0_fire && t0_needRead && BiasEnable.B
   biasTable.io.trainReadReq.bits.setIdx   := t0_biasIdx
   biasTable.io.trainReadReq.bits.bankMask := t0_bankMask
 
   dontTouch(t0_bankConflict)
   XSPerfAccumulate("t0_writeConflict", t0_bankConflict)
+  XSPerfAccumulate("read_free_conflict_candidate", t0_bankConflict)
+  XSPerfAccumulate("read_free_snapshot_train", t0_fire && t0_useReadFreeSnapshot)
+  XSPerfAccumulate(
+    "read_free_shadow_repair",
+    t0_fire && t0_useReadFreeSnapshot &&
+      (!t0_pathFresh.reduce(_ && _) || !t0_globalFresh.reduce(_ && _) || !t0_bwFresh.reduce(_ && _) ||
+        !t0_imliFresh || !t0_biasFresh)
+  )
+  XSPerfAccumulate(
+    "read_free_identity_fallback",
+    ScReadFreeTraining.B && t0_bankConflict && !t0_snapshotIdentityMatch
+  )
+  XSPerfAccumulate(
+    "read_free_stale_fallback",
+    ScReadFreeTraining.B && t0_bankConflict && t0_snapshotIdentityMatch && !t0_snapshotFresh
+  )
+  XSPerfAccumulate(
+    "read_free_pending_fallback",
+    ScReadFreeTraining.B && t0_bankConflict && t0_snapshotIdentityMatch && t0_snapshotFresh &&
+      t0_pendingMutationHazard
+  )
 
   /*
    *  train pipeline stage 1
    */
-  private val t1_fire     = RegNext(t0_fire, false.B)
-  private val t1_branches = RegEnable(io.train.branches, t0_fire)
-  private val t1_meta     = RegEnable(t0_meta, 0.U.asTypeOf(t0_meta), t0_fire)
-  private val t1_commonHR = RegEnable(t0_commonHR, t0_fire)
-  private val t1_startPc  = RegEnable(io.train.startPc, t0_fire)
+  private val t1_fire                   = RegNext(t0_fire, false.B)
+  private val t1_branches               = RegEnable(io.train.branches, t0_fire)
+  private val t1_meta                   = RegEnable(t0_meta, 0.U.asTypeOf(t0_meta), t0_fire)
+  private val t1_commonHR               = RegEnable(t0_commonHR, t0_fire)
+  private val t1_startPc                = RegEnable(io.train.startPc, t0_fire)
+  private val t1_useReadFreeSnapshot    = RegEnable(t0_useReadFreeSnapshot, t0_fire)
+  private val t1_snapshotPathEntries    = RegEnable(t0_forwardedPathEntries, t0_fire)
+  private val t1_snapshotGlobalEntries  = RegEnable(t0_forwardedGlobalEntries, t0_fire)
+  private val t1_snapshotBWEntries      = RegEnable(t0_forwardedBWEntries, t0_fire)
+  private val t1_snapshotImliEntries    = RegEnable(t0_forwardedImliEntries, t0_fire)
+  private val t1_snapshotBiasEntries    = RegEnable(t0_forwardedBiasEntries, t0_fire)
+  private val t1_snapshotPathVersions   = RegEnable(t0_forwardedPathVersions, t0_fire)
+  private val t1_snapshotGlobalVersions = RegEnable(t0_forwardedGlobalVersions, t0_fire)
+  private val t1_snapshotBWVersions     = RegEnable(t0_forwardedBWVersions, t0_fire)
+  private val t1_snapshotImliVersion    = RegEnable(t0_forwardedImliVersion, t0_fire)
+  private val t1_snapshotBiasVersion    = RegEnable(t0_forwardedBiasVersion, t0_fire)
+  private val t1_snapshotPathEntryValues = VecInit(t1_snapshotPathEntries.map { row =>
+    VecInit(row.map(_.asTypeOf(new ScEntry())))
+  })
+  private val t1_snapshotGlobalEntryValues = VecInit(t1_snapshotGlobalEntries.map { row =>
+    VecInit(row.map(_.asTypeOf(new ScEntry())))
+  })
+  private val t1_snapshotBWEntryValues = VecInit(t1_snapshotBWEntries.map { row =>
+    VecInit(row.map(_.asTypeOf(new ScEntry())))
+  })
+  private val t1_snapshotImliEntryValues = VecInit(t1_snapshotImliEntries.map(_.asTypeOf(new ScEntry())))
+  private val t1_snapshotBiasEntryValues = VecInit(t1_snapshotBiasEntries.map(_.asTypeOf(new ScEntry())))
 
   private val t1_bankMask     = RegEnable(t0_bankMask, t0_fire)
   private val t1_pathSetIdx   = RegEnable(VecInit(t0_pathIdx), t0_fire)
@@ -440,27 +716,27 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
 
   private val t1_oldPathEntries = Mux(
     PathEnable.B,
-    VecInit(pathTable.map(_.io.trainReadResp)),
+    Mux(t1_useReadFreeSnapshot, t1_snapshotPathEntryValues, VecInit(pathTable.map(_.io.trainReadResp))),
     VecInit.fill(NumPathTables)(VecInit.fill(NumWays)(0.U.asTypeOf(new ScEntry())))
   )
   private val t1_oldGlobalEntries = Mux(
     t1_commonHR.valid && GlobalEnable.B,
-    VecInit(globalTable.map(_.io.trainReadResp)),
+    Mux(t1_useReadFreeSnapshot, t1_snapshotGlobalEntryValues, VecInit(globalTable.map(_.io.trainReadResp))),
     VecInit.fill(NumGlobalTables)(VecInit.fill(NumWays)(0.U.asTypeOf(new ScEntry())))
   )
   private val t1_oldBWEntries = Mux(
     t1_commonHR.valid && BWEnable.B,
-    VecInit(bwTable.map(_.io.trainReadResp)),
+    Mux(t1_useReadFreeSnapshot, t1_snapshotBWEntryValues, VecInit(bwTable.map(_.io.trainReadResp))),
     VecInit.fill(NumBWTables)(VecInit.fill(NumWays)(0.U.asTypeOf(new ScEntry())))
   )
   private val t1_oldImliEntries = Mux(
     ImliEnable.B,
-    imliTable.io.trainReadResp,
+    Mux(t1_useReadFreeSnapshot, t1_snapshotImliEntryValues, imliTable.io.trainReadResp),
     VecInit.fill(NumWays)(0.U.asTypeOf(new ScEntry()))
   )
   private val t1_oldBiasEntries = Mux(
     BiasEnable.B,
-    biasTable.io.trainReadResp,
+    Mux(t1_useReadFreeSnapshot, t1_snapshotBiasEntryValues, biasTable.io.trainReadResp),
     VecInit.fill(BiasTableNumWays)(0.U.asTypeOf(new ScEntry()))
   )
   private val t1_oldBiasLowBits = RegEnable(t0_meta.scBiasLowerBits, t0_fire)
@@ -608,24 +884,30 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
   /*
    *  train pipeline stage 2
    */
-  private val t2_writeValid          = RegNext(t1_writeValid, false.B)
-  private val t2_bankMask            = RegEnable(t1_bankMask, t1_fire)
-  private val t2_pathSetIdx          = RegEnable(t1_pathSetIdx, t1_fire)
-  private val t2_globalSetIdx        = RegEnable(t1_globalSetIdx, t1_fire)
-  private val t2_bwSetIdx            = RegEnable(t1_bwSetIdx, t1_fire)
-  private val t2_imliSetIdx          = RegEnable(t1_imliSetIdx, t1_fire)
-  private val t2_biasSetIdx          = RegEnable(t1_biasSetIdx, t1_fire)
-  private val t2_commonHR            = RegEnable(t1_commonHR, t1_fire)
-  private val t2_oldPathEntries      = RegEnable(t1_oldPathEntries, t1_fire)
-  private val t2_oldGlobalEntries    = RegEnable(t1_oldGlobalEntries, t1_fire)
-  private val t2_oldBWEntries        = RegEnable(t1_oldBWEntries, t1_fire)
-  private val t2_oldImliEntries      = RegEnable(t1_oldImliEntries, t1_fire)
-  private val t2_oldBiasEntries      = RegEnable(t1_oldBiasEntries, t1_fire)
-  private val t2_writePathEntryVec   = RegEnable(t1_writePathEntryVec, t1_fire)
-  private val t2_writeGlobalEntryVec = RegEnable(t1_writeGlobalEntryVec, t1_fire)
-  private val t2_writeBWEntryVec     = RegEnable(t1_writeBWEntryVec, t1_fire)
-  private val t2_writeBiasEntryVec   = RegEnable(t1_writeBiasEntryVec, t1_fire)
-  private val t2_writeImliEntryVec   = RegEnable(t1_writeImliEntryVec, t1_fire)
+  private val t2_writeValid             = RegNext(t1_writeValid, false.B)
+  private val t2_useReadFreeSnapshot    = RegEnable(t1_useReadFreeSnapshot, t1_fire)
+  private val t2_snapshotPathVersions   = RegEnable(t1_snapshotPathVersions, t1_fire)
+  private val t2_snapshotGlobalVersions = RegEnable(t1_snapshotGlobalVersions, t1_fire)
+  private val t2_snapshotBWVersions     = RegEnable(t1_snapshotBWVersions, t1_fire)
+  private val t2_snapshotImliVersion    = RegEnable(t1_snapshotImliVersion, t1_fire)
+  private val t2_snapshotBiasVersion    = RegEnable(t1_snapshotBiasVersion, t1_fire)
+  private val t2_bankMask               = RegEnable(t1_bankMask, t1_fire)
+  private val t2_pathSetIdx             = RegEnable(t1_pathSetIdx, t1_fire)
+  private val t2_globalSetIdx           = RegEnable(t1_globalSetIdx, t1_fire)
+  private val t2_bwSetIdx               = RegEnable(t1_bwSetIdx, t1_fire)
+  private val t2_imliSetIdx             = RegEnable(t1_imliSetIdx, t1_fire)
+  private val t2_biasSetIdx             = RegEnable(t1_biasSetIdx, t1_fire)
+  private val t2_commonHR               = RegEnable(t1_commonHR, t1_fire)
+  private val t2_oldPathEntries         = RegEnable(t1_oldPathEntries, t1_fire)
+  private val t2_oldGlobalEntries       = RegEnable(t1_oldGlobalEntries, t1_fire)
+  private val t2_oldBWEntries           = RegEnable(t1_oldBWEntries, t1_fire)
+  private val t2_oldImliEntries         = RegEnable(t1_oldImliEntries, t1_fire)
+  private val t2_oldBiasEntries         = RegEnable(t1_oldBiasEntries, t1_fire)
+  private val t2_writePathEntryVec      = RegEnable(t1_writePathEntryVec, t1_fire)
+  private val t2_writeGlobalEntryVec    = RegEnable(t1_writeGlobalEntryVec, t1_fire)
+  private val t2_writeBWEntryVec        = RegEnable(t1_writeBWEntryVec, t1_fire)
+  private val t2_writeBiasEntryVec      = RegEnable(t1_writeBiasEntryVec, t1_fire)
+  private val t2_writeImliEntryVec      = RegEnable(t1_writeImliEntryVec, t1_fire)
   private val t2_writePathWayMaskVec =
     t2_oldPathEntries.zip(t2_writePathEntryVec).map { case (oldEntries, newEntries) =>
       updateWayMask(oldEntries, newEntries)
@@ -647,10 +929,117 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
   }
   private val t2_writeImliWayMask = updateWayMask(t2_oldImliEntries, t2_writeImliEntryVec)
 
+  // Forward accepted in-flight mutations into a conflicting prediction-time
+  // snapshot.  t1 is newer than t2, and a t1 row was itself computed from the
+  // t2-forwarded snapshot, so selecting t1 naturally preserves update order.
+  // Versions advance only for mutations that actually change at least one way.
+  private val t0SameBankT1 = t1_fire && t1_bankMask === t0_bankMask
+  private val t0SameBankT2 = t2_writeValid && t2_bankMask === t0_bankMask
+
+  t0_forwardedPathEntries.zip(t0_forwardedPathVersions).zipWithIndex.foreach {
+    case ((entries, version), i) =>
+      val t2Hit = t0SameBankT2 && PathEnable.B && t2_pathSetIdx(i) === t0_pathIdx(i) &&
+        t2_writePathWayMaskVec(i).reduce(_ || _)
+      val t1WayMask = updateWayMask(t1_oldPathEntries(i), t1_writePathEntryVec(i))
+      val t1Hit     = t0SameBankT1 && PathEnable.B && t1_pathSetIdx(i) === t0_pathIdx(i) && t1WayMask.reduce(_ || _)
+      entries := Mux(
+        t1Hit,
+        VecInit(t1_writePathEntryVec(i).map(_.asUInt)),
+        Mux(t2Hit, VecInit(t2_writePathEntryVec(i).map(_.asUInt)), t0_repairedPathEntries(i))
+      )
+      version := t0_repairedPathVersions(i) + t2Hit.asUInt + t1Hit.asUInt
+  }
+  t0_forwardedGlobalEntries.zip(t0_forwardedGlobalVersions).zipWithIndex.foreach {
+    case ((entries, version), i) =>
+      val t2Hit = t0SameBankT2 && t2_commonHR.valid && GlobalEnable.B && t2_globalSetIdx(i) === t0_globalIdx(i) &&
+        t2_writeGlobalEntryWayMaskVec(i).reduce(_ || _)
+      val t1WayMask = updateWayMask(t1_oldGlobalEntries(i), t1_writeGlobalEntryVec(i))
+      val t1Hit = t0SameBankT1 && t1_commonHR.valid && GlobalEnable.B && t1_globalSetIdx(i) === t0_globalIdx(i) &&
+        t1WayMask.reduce(_ || _)
+      entries := Mux(
+        t1Hit,
+        VecInit(t1_writeGlobalEntryVec(i).map(_.asUInt)),
+        Mux(t2Hit, VecInit(t2_writeGlobalEntryVec(i).map(_.asUInt)), t0_repairedGlobalEntries(i))
+      )
+      version := t0_repairedGlobalVersions(i) + t2Hit.asUInt + t1Hit.asUInt
+  }
+  t0_forwardedBWEntries.zip(t0_forwardedBWVersions).zipWithIndex.foreach {
+    case ((entries, version), i) =>
+      val t2Hit = t0SameBankT2 && t2_commonHR.valid && BWEnable.B && t2_bwSetIdx(i) === t0_bwIdx(i) &&
+        t2_writeBWEntryWayMaskVec(i).reduce(_ || _)
+      val t1WayMask = updateWayMask(t1_oldBWEntries(i), t1_writeBWEntryVec(i))
+      val t1Hit = t0SameBankT1 && t1_commonHR.valid && BWEnable.B && t1_bwSetIdx(i) === t0_bwIdx(i) &&
+        t1WayMask.reduce(_ || _)
+      entries := Mux(
+        t1Hit,
+        VecInit(t1_writeBWEntryVec(i).map(_.asUInt)),
+        Mux(t2Hit, VecInit(t2_writeBWEntryVec(i).map(_.asUInt)), t0_repairedBWEntries(i))
+      )
+      version := t0_repairedBWVersions(i) + t2Hit.asUInt + t1Hit.asUInt
+  }
+
+  private val t2ImliHit = t0SameBankT2 && ImliEnable.B && t2_imliSetIdx === t0_imliIdx &&
+    t2_writeImliWayMask.reduce(_ || _)
+  private val t1ImliWayMask = updateWayMask(t1_oldImliEntries, t1_writeImliEntryVec)
+  private val t1ImliHit = t0SameBankT1 && ImliEnable.B && t1_imliSetIdx === t0_imliIdx && t1ImliWayMask.reduce(_ || _)
+  t0_forwardedImliEntries := Mux(
+    t1ImliHit,
+    VecInit(t1_writeImliEntryVec.map(_.asUInt)),
+    Mux(t2ImliHit, VecInit(t2_writeImliEntryVec.map(_.asUInt)), t0_repairedImliEntries)
+  )
+  t0_forwardedImliVersion := t0_repairedImliVersion + t2ImliHit.asUInt + t1ImliHit.asUInt
+
+  private val t2BiasHit = t0SameBankT2 && BiasEnable.B && t2_biasSetIdx === t0_biasIdx &&
+    t2_writeBiasWayMask.reduce(_ || _)
+  private val t1BiasWayMask = VecInit(t1_oldBiasEntries.zip(t1_writeBiasEntryVec).map { case (oldEntry, newEntry) =>
+    oldEntry.ctr =/= newEntry.ctr
+  })
+  private val t1BiasHit = t0SameBankT1 && BiasEnable.B && t1_biasSetIdx === t0_biasIdx && t1BiasWayMask.reduce(_ || _)
+  t0_forwardedBiasEntries := Mux(
+    t1BiasHit,
+    VecInit(t1_writeBiasEntryVec.map(_.asUInt)),
+    Mux(t2BiasHit, VecInit(t2_writeBiasEntryVec.map(_.asUInt)), t0_repairedBiasEntries)
+  )
+  t0_forwardedBiasVersion := t0_repairedBiasVersion + t2BiasHit.asUInt + t1BiasHit.asUInt
+
+  XSPerfAccumulate("read_free_pending_forward", t0_fire && t0_useReadFreeSnapshot && t0_pendingMutationHazard)
+
+  pathTable.zip(t2_pathSetIdx).foreach { case (table, idx) =>
+    table.io.commitSetIdx   := idx
+    table.io.commitBankMask := t2_bankMask
+  }
+  globalTable.zip(t2_globalSetIdx).foreach { case (table, idx) =>
+    table.io.commitSetIdx   := idx
+    table.io.commitBankMask := t2_bankMask
+  }
+  bwTable.zip(t2_bwSetIdx).foreach { case (table, idx) =>
+    table.io.commitSetIdx   := idx
+    table.io.commitBankMask := t2_bankMask
+  }
+  imliTable.io.commitSetIdx   := t2_imliSetIdx
+  imliTable.io.commitBankMask := t2_bankMask
+  biasTable.io.commitSetIdx   := t2_biasSetIdx
+  biasTable.io.commitBankMask := t2_bankMask
+
+  private val t2_snapshotStillFresh =
+    (!PathEnable.B || t2_snapshotPathVersions.zip(pathTable).map { case (snap, table) =>
+      snap === table.io.commitVersion
+    }.reduce(_ && _)) &&
+      (!GlobalEnable.B || !t2_commonHR.valid || t2_snapshotGlobalVersions.zip(globalTable).map {
+        case (snap, table) => snap === table.io.commitVersion
+      }.reduce(_ && _)) &&
+      (!BWEnable.B || !t2_commonHR.valid || t2_snapshotBWVersions.zip(bwTable).map {
+        case (snap, table) => snap === table.io.commitVersion
+      }.reduce(_ && _)) &&
+      (!ImliEnable.B || t2_snapshotImliVersion === imliTable.io.commitVersion) &&
+      (!BiasEnable.B || t2_snapshotBiasVersion === biasTable.io.commitVersion)
+  private val t2_commitAllowed = !t2_useReadFreeSnapshot || t2_snapshotStillFresh
+  XSPerfAccumulate("read_free_commit_stale_drop", t2_writeValid && t2_useReadFreeSnapshot && !t2_snapshotStillFresh)
+
   // new entries write back to tables
   pathTable.zip(t2_pathSetIdx).zip(t2_writePathEntryVec).zip(t2_writePathWayMaskVec).foreach {
     case (((table, idx), writeEntries), writeWayMask) =>
-      table.io.update.valid    := t2_writeValid && PathEnable.B
+      table.io.update.valid    := t2_writeValid && t2_commitAllowed && PathEnable.B
       table.io.update.setIdx   := idx
       table.io.update.bankMask := t2_bankMask
       table.io.update.wayMask  := writeWayMask
@@ -659,7 +1048,7 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
 
   globalTable.zip(t2_globalSetIdx).zip(t2_writeGlobalEntryVec).zip(t2_writeGlobalEntryWayMaskVec).foreach {
     case (((table, idx), writeEntries), writeWayMask) =>
-      table.io.update.valid    := t2_writeValid && t2_commonHR.valid && GlobalEnable.B
+      table.io.update.valid    := t2_writeValid && t2_commitAllowed && t2_commonHR.valid && GlobalEnable.B
       table.io.update.setIdx   := idx
       table.io.update.bankMask := t2_bankMask
       table.io.update.wayMask  := writeWayMask
@@ -668,20 +1057,20 @@ class Sc(implicit p: Parameters) extends BasePredictor with HasScParameters with
 
   bwTable.zip(t2_bwSetIdx).zip(t2_writeBWEntryVec).zip(t2_writeBWEntryWayMaskVec).foreach {
     case (((table, idx), writeEntries), writeWayMask) =>
-      table.io.update.valid    := t2_writeValid && t2_commonHR.valid && BWEnable.B
+      table.io.update.valid    := t2_writeValid && t2_commitAllowed && t2_commonHR.valid && BWEnable.B
       table.io.update.setIdx   := idx
       table.io.update.bankMask := t2_bankMask
       table.io.update.wayMask  := writeWayMask
       table.io.update.entryVec := writeEntries
   }
 
-  imliTable.io.update.valid    := t2_writeValid && ImliEnable.B
+  imliTable.io.update.valid    := t2_writeValid && t2_commitAllowed && ImliEnable.B
   imliTable.io.update.setIdx   := t2_imliSetIdx
   imliTable.io.update.bankMask := t2_bankMask
   imliTable.io.update.wayMask  := t2_writeImliWayMask
   imliTable.io.update.entryVec := t2_writeImliEntryVec
 
-  biasTable.io.update.valid    := t2_writeValid && BiasEnable.B
+  biasTable.io.update.valid    := t2_writeValid && t2_commitAllowed && BiasEnable.B
   biasTable.io.update.setIdx   := t2_biasSetIdx
   biasTable.io.update.bankMask := t2_bankMask
   biasTable.io.update.wayMask  := t2_writeBiasWayMask

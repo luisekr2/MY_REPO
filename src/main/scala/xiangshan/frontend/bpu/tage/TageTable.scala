@@ -24,6 +24,66 @@ import utility.sram.SRAMTemplate
 import xiangshan.frontend.bpu.TageTableInfo
 import xiangshan.frontend.bpu.WriteBuffer
 
+class TageMutationVersionTable(
+    tableIdx:          Int,
+    implicit val info: TageTableInfo
+)(implicit p: Parameters) extends TageModule {
+  private val VersionWidth = 12
+  private val NumBuckets   = 16
+
+  class VersionTableIO extends TageBundle {
+    val predictSetIdx:     UInt                 = Input(UInt(SetIdxWidth.W))
+    val predictBankIdx:    UInt                 = Input(UInt(log2Ceil(NumBanks).W))
+    val predictVersion:    Vec[UInt]            = Output(Vec(NumWays, UInt(VersionWidth.W)))
+    val trainSetIdx:       UInt                 = Input(UInt(SetIdxWidth.W))
+    val trainBankIdx:      UInt                 = Input(UInt(log2Ceil(NumBanks).W))
+    val trainVersion:      Vec[UInt]            = Output(Vec(NumWays, UInt(VersionWidth.W)))
+    val staleCheckSetIdx:  UInt                 = Input(UInt(SetIdxWidth.W))
+    val staleCheckBankIdx: UInt                 = Input(UInt(log2Ceil(NumBanks).W))
+    val staleCheckVersion: Vec[UInt]            = Output(Vec(NumWays, UInt(VersionWidth.W)))
+    val writeReq:          Valid[TableWriteReq] = Flipped(Valid(new TableWriteReq))
+    val resetAll:          Bool                 = Input(Bool())
+  }
+  val io: VersionTableIO = IO(new VersionTableIO)
+
+  private val versions = RegInit(VecInit.fill(NumBanks)(
+    VecInit.fill(NumWays)(VecInit.fill(NumBuckets)(0.U(VersionWidth.W)))
+  ))
+
+  private def versionIndex(setIdx: UInt): UInt = {
+    val hashWidth = log2Ceil(NumBuckets)
+    setIdx(hashWidth - 1, 0) ^ setIdx(2 * hashWidth - 1, hashWidth)
+  }
+
+  for (wayIdx <- 0 until NumWays) {
+    io.predictVersion(wayIdx) :=
+      versions(io.predictBankIdx)(wayIdx)(versionIndex(io.predictSetIdx))
+    io.trainVersion(wayIdx) :=
+      versions(io.trainBankIdx)(wayIdx)(versionIndex(io.trainSetIdx))
+    io.staleCheckVersion(wayIdx) :=
+      versions(io.staleCheckBankIdx)(wayIdx)(versionIndex(io.staleCheckSetIdx))
+  }
+
+  when(io.resetAll) {
+    for {
+      bankIdx <- 0 until NumBanks
+      wayIdx  <- 0 until NumWays
+      bucket  <- 0 until NumBuckets
+    } {
+      versions(bankIdx)(wayIdx)(bucket) := versions(bankIdx)(wayIdx)(bucket) + 1.U
+    }
+  }.elsewhen(io.writeReq.valid) {
+    val writeBankIdx    = OHToUInt(io.writeReq.bits.bankMask)
+    val writeVersionIdx = versionIndex(io.writeReq.bits.setIdx)
+    for (wayIdx <- 0 until NumWays) {
+      when(io.writeReq.bits.wayMask(wayIdx)) {
+        versions(writeBankIdx)(wayIdx)(writeVersionIdx) :=
+          versions(writeBankIdx)(wayIdx)(writeVersionIdx) + 1.U
+      }
+    }
+  }
+}
+
 class TageTable(
     tableIdx:          Int,
     implicit val info: TageTableInfo // declare info as implicit val to pass it to Bundles / methods like TableReadReq
@@ -99,6 +159,7 @@ class TageTable(
         WriteBufferSize,
         numPorts = NumWays,
         hasCnt = true,
+        hasLookup = true,
         nameSuffix = s"tageTable${tableIdx}_${bankIdx}"
       )).suggestName(s"tage_entry_write_buffer_bank${bankIdx}")
     }
@@ -106,11 +167,12 @@ class TageTable(
   // use a write buffer to store a usefulCtr write request
   private val usefulCtrWriteBuffers =
     Seq.tabulate(NumBanks, NumWays) { (bankIdx, wayIdx) =>
-      Module(new Queue(
+      Module(new WriteBuffer(
         new UsefulCtrSramWriteReq,
-        entries = WriteBufferSize,
-        pipe = true,
-        flow = true
+        numEntries = WriteBufferSize,
+        numPorts = 1,
+        hasLookup = true,
+        nameSuffix = s"tageUsefulTable${tableIdx}_${bankIdx}_${wayIdx}"
       )).suggestName(s"tage_useful_write_buffer_bank${bankIdx}_way${wayIdx}")
     }
 
@@ -121,6 +183,10 @@ class TageTable(
       io.readReq(1).valid && io.readReq(1).bits.bankMask(bankIdx)
     )
     val readSetIdx = Mux(readValid(0), io.readReq(0).bits.setIdx, io.readReq(1).bits.setIdx)
+    entryWriteBuffers(bankIdx).io.lookupSetIdx.get := RegEnable(readSetIdx, readValid.reduce(_ || _))
+    usefulCtrWriteBuffers(bankIdx).foreach(
+      _.io.lookupSetIdx.get := RegEnable(readSetIdx, readValid.reduce(_ || _))
+    )
 
     entryBank.foreach { way =>
       way.io.r.req.valid       := readValid.reduce(_ || _)
@@ -153,9 +219,9 @@ class TageTable(
     bankBuffer.zipWithIndex.foreach { case (wayBuffer, wayIdx) =>
       val writeValid =
         writeReqValid && writeReq.bankMask(bankIdx) && writeReq.wayMask(wayIdx) && writeReq.writeUsefulEn(wayIdx)
-      wayBuffer.io.enq.valid          := writeValid
-      wayBuffer.io.enq.bits.setIdx    := writeReq.setIdx
-      wayBuffer.io.enq.bits.usefulCtr := writeReq.usefulCtrs(wayIdx)
+      wayBuffer.io.write.head.valid          := writeValid
+      wayBuffer.io.write.head.bits.setIdx    := writeReq.setIdx
+      wayBuffer.io.write.head.bits.usefulCtr := writeReq.usefulCtrs(wayIdx)
     }
   }
 
@@ -187,14 +253,14 @@ class TageTable(
 
     bank.zip(bankBuffer).foreach { case (way, wayBuffer) =>
       val usefulResetValid = usefulResetInFlightMask(bankIdx)
-      val usefulWriteValid = wayBuffer.io.deq.valid && !way.io.r.req.valid && !usefulResetValid
+      val usefulWriteValid = wayBuffer.io.read.head.valid && !way.io.r.req.valid && !usefulResetValid
       way.io.w.apply(
         usefulResetValid || usefulWriteValid,
-        Mux(usefulResetValid, UsefulCounter.Zero, wayBuffer.io.deq.bits.usefulCtr),
-        Mux(usefulResetValid, usefulResetSetIdx(bankIdx), wayBuffer.io.deq.bits.setIdx),
+        Mux(usefulResetValid, UsefulCounter.Zero, wayBuffer.io.read.head.bits.usefulCtr),
+        Mux(usefulResetValid, usefulResetSetIdx(bankIdx), wayBuffer.io.read.head.bits.setIdx),
         1.U(1.W) // way mask
       )
-      wayBuffer.io.deq.ready := way.io.w.req.ready && !way.io.r.req.valid && !usefulResetValid
+      wayBuffer.io.read.head.ready := way.io.w.req.ready && !way.io.r.req.valid && !usefulResetValid
     }
   }
 
@@ -202,17 +268,40 @@ class TageTable(
     val readBankMaskNext          = RegEnable(io.readReq(i).bits.bankMask, io.readReq(i).valid)
     val readDuringUsefulResetNext = RegEnable(readDuringUsefulReset(i), io.readReq(i).valid)
 
-    resp.entries := Mux1H(
+    val sramEntries = Mux1H(
       readBankMaskNext,
       entrySram.map(bank => VecInit(bank.map(way => way.io.r.resp.data.head)))
     )
+    val shadowEntries = Mux1H(
+      readBankMaskNext,
+      entryWriteBuffers.map(buffer => VecInit(buffer.io.lookupResp.get.map(_.bits)))
+    )
+    val shadowHits = Mux1H(
+      readBankMaskNext,
+      entryWriteBuffers.map(buffer => VecInit(buffer.io.lookupResp.get.map(_.valid)))
+    )
+    resp.entries := VecInit((0 until NumWays).map { wayIdx =>
+      Mux(shadowHits(wayIdx), shadowEntries(wayIdx).entry, sramEntries(wayIdx))
+    })
+    val sramUsefulCtrs = Mux1H(
+      readBankMaskNext,
+      usefulCtrSram.map(bank => VecInit(bank.map(way => way.io.r.resp.data.head)))
+    )
+    val shadowUsefulCtrs = Mux1H(
+      readBankMaskNext,
+      usefulCtrWriteBuffers.map(bank => VecInit(bank.map(_.io.lookupResp.get.head.bits.usefulCtr)))
+    )
+    val shadowUsefulHits = Mux1H(
+      readBankMaskNext,
+      usefulCtrWriteBuffers.map(bank => VecInit(bank.map(_.io.lookupResp.get.head.valid)))
+    )
+    val coherentUsefulCtrs = VecInit((0 until NumWays).map { wayIdx =>
+      Mux(shadowUsefulHits(wayIdx), shadowUsefulCtrs(wayIdx), sramUsefulCtrs(wayIdx))
+    })
     resp.usefulCtrs := Mux(
       readDuringUsefulResetNext,
       VecInit.fill(NumWays)(UsefulCounter.Zero),
-      Mux1H(
-        readBankMaskNext,
-        usefulCtrSram.map(bank => VecInit(bank.map(way => way.io.r.resp.data.head)))
-      )
+      coherentUsefulCtrs
     )
   }
 
@@ -222,6 +311,15 @@ class TageTable(
 
   XSPerfAccumulate("predict_read", io.readReq(0).valid)
   XSPerfAccumulate("train_read", io.readReq(1).valid)
+  XSPerfAccumulate(
+    "predict_write_buffer_forward",
+    io.readReq(0).valid && entryWriteBuffers
+      .zipWithIndex
+      .map { case (buffer, bankIdx) =>
+        io.readReq(0).bits.bankMask(bankIdx) && buffer.io.lookupResp.get.map(_.valid).reduce(_ || _)
+      }
+      .reduce(_ || _)
+  )
   XSPerfAccumulate("write", io.writeReq.valid)
   XSPerfAccumulate(
     s"tage_write_entry_${tableIdx}",

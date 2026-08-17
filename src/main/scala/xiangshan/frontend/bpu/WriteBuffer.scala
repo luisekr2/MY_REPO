@@ -39,27 +39,36 @@ import xiangshan.XSModule
  * @param hasWayMask Whether the write request bundle has wayMask and wayData fields,
  * used to update the entry's wayMask and wayData when hit the same entry
  * @param hasCnt Whether the write request bundle has a counter field, used to update the entry's useful counter
+ * @param hasLookup Whether to expose the retained latest entry for a set index
  * @param hasFlush Whether the write buffer has a flush signal, used to reset the write buffer
  * @param nameSuffix Suffix of name, used for clearer logging
 */
 class WriteBuffer[T <: WriteReqBundle](
-    gen:        T,
-    numEntries: Int = 1,
-    numPorts:   Int = 1,
-    numWays:    Int = 1,
-    hasCnt:     Boolean = false,
-    hasWayMask: Boolean = false,
-    hasFlush:   Boolean = false,
-    nameSuffix: String = ""
+    gen:             T,
+    numEntries:      Int = 1,
+    numPorts:        Int = 1,
+    numWays:         Int = 1,
+    hasCnt:          Boolean = false,
+    hasWayMask:      Boolean = false,
+    hasLookup:       Boolean = false,
+    hasSecondLookup: Boolean = false,
+    hasFlush:        Boolean = false,
+    nameSuffix:      String = ""
 )(implicit p: Parameters) extends XSModule {
   require(numEntries >= 0)
   require(numPorts >= 1)
   require(numPorts <= numEntries)
   class WriteBufferIO extends Bundle {
-    val write:     Vec[DecoupledIO[T]] = Vec(numPorts, Flipped(DecoupledIO(gen)))
-    val read:      Vec[DecoupledIO[T]] = Vec(numPorts, DecoupledIO(gen))
-    val takenMask: Option[Vec[Bool]]   = Option.when(hasCnt)(Vec(numPorts, Input(Bool())))
-    val flush:     Option[Bool]        = Option.when(hasFlush)(Input(Bool()))
+    val write:        Vec[DecoupledIO[T]] = Vec(numPorts, Flipped(DecoupledIO(gen)))
+    val read:         Vec[DecoupledIO[T]] = Vec(numPorts, DecoupledIO(gen))
+    val takenMask:    Option[Vec[Bool]]   = Option.when(hasCnt)(Vec(numPorts, Input(Bool())))
+    val lookupSetIdx: Option[UInt]        = Option.when(hasLookup)(Input(UInt(gen.setIdx.getWidth.W)))
+    val lookupResp: Option[Vec[Valid[T]]] =
+      Option.when(hasLookup)(Output(Vec(numPorts, Valid(gen))))
+    val secondLookupSetIdx: Option[UInt] = Option.when(hasSecondLookup)(Input(UInt(gen.setIdx.getWidth.W)))
+    val secondLookupResp: Option[Vec[Valid[T]]] =
+      Option.when(hasSecondLookup)(Output(Vec(numPorts, Valid(gen))))
+    val flush: Option[Bool] = Option.when(hasFlush)(Input(Bool()))
   }
   val io: WriteBufferIO = IO(new WriteBufferIO)
 
@@ -84,6 +93,40 @@ class WriteBuffer[T <: WriteReqBundle](
   private val needWrite = RegInit(VecInit(Seq.fill(numPorts)(VecInit(Seq.fill(numEntries)(false.B)))))
   private val entries = RegInit(VecInit(Seq.fill(numPorts)(VecInit(Seq.fill(numEntries)(0.U.asTypeOf(gen.cloneType))))))
   private val valids  = RegInit(VecInit(Seq.fill(numPorts)(VecInit(Seq.fill(numEntries)(false.B)))))
+
+  // Entries remain valid after draining to SRAM.  When enabled, expose the
+  // retained entry as a coherent shadow of each physical write port (way).
+  // There can be at most one retained entry with a given setIdx in each row;
+  // victimSameSetIdx below enforces that invariant on replacement.
+  if (hasLookup) {
+    val lookupSetIdx = io.lookupSetIdx.get
+    io.lookupResp.get.zipWithIndex.foreach { case (resp, portIdx) =>
+      val hitMask = VecInit(entries(portIdx).zip(valids(portIdx)).map { case (entry, valid) =>
+        valid && entry.setIdx === lookupSetIdx
+      })
+      resp.valid := hitMask.asUInt.orR
+      resp.bits  := Mux1H(hitMask, entries(portIdx))
+      XSError(
+        PopCount(hitMask) > 1.U,
+        f"WriteBuffer_$nameSuffix lookup port${portIdx} matched more than one retained entry"
+      )
+    }
+  }
+
+  if (hasSecondLookup) {
+    val lookupSetIdx = io.secondLookupSetIdx.get
+    io.secondLookupResp.get.zipWithIndex.foreach { case (resp, portIdx) =>
+      val hitMask = VecInit(entries(portIdx).zip(valids(portIdx)).map { case (entry, valid) =>
+        valid && entry.setIdx === lookupSetIdx
+      })
+      resp.valid := hitMask.asUInt.orR
+      resp.bits  := Mux1H(hitMask, entries(portIdx))
+      XSError(
+        PopCount(hitMask) > 1.U,
+        f"WriteBuffer_$nameSuffix second lookup port${portIdx} matched more than one retained entry"
+      )
+    }
+  }
 
   private val writePortValid = VecInit(Seq.fill(numPorts)(false.B))
   private val writePortBits  = VecInit(Seq.fill(numPorts)(0.U.asTypeOf(gen.cloneType)))
