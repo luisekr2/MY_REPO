@@ -50,6 +50,7 @@ class WriteBuffer[T <: WriteReqBundle](
     hasCnt:     Boolean = false,
     hasWayMask: Boolean = false,
     hasFlush:   Boolean = false,
+    hasLookup:  Boolean = false,
     nameSuffix: String = ""
 )(implicit p: Parameters) extends XSModule {
   require(numEntries >= 0)
@@ -60,6 +61,8 @@ class WriteBuffer[T <: WriteReqBundle](
     val read:      Vec[DecoupledIO[T]] = Vec(numPorts, DecoupledIO(gen))
     val takenMask: Option[Vec[Bool]]   = Option.when(hasCnt)(Vec(numPorts, Input(Bool())))
     val flush:     Option[Bool]        = Option.when(hasFlush)(Input(Bool()))
+    val lookupSetIdx: Option[UInt] = Option.when(hasLookup)(Input(UInt(gen.setIdx.getWidth.W)))
+    val lookup: Option[Vec[Valid[T]]] = Option.when(hasLookup)(Output(Vec(numPorts, Valid(gen))))
   }
   val io: WriteBufferIO = IO(new WriteBufferIO)
 
@@ -84,6 +87,22 @@ class WriteBuffer[T <: WriteReqBundle](
   private val needWrite = RegInit(VecInit(Seq.fill(numPorts)(VecInit(Seq.fill(numEntries)(false.B)))))
   private val entries = RegInit(VecInit(Seq.fill(numPorts)(VecInit(Seq.fill(numEntries)(0.U.asTypeOf(gen.cloneType))))))
   private val valids  = RegInit(VecInit(Seq.fill(numPorts)(VecInit(Seq.fill(numEntries)(false.B)))))
+
+  // Optional associative view of the latest value retained by each local
+  // write-buffer row.  Drained entries deliberately remain valid: until a
+  // later entry replaces them they are identical to, or newer than, SRAM.
+  // Keeping this lookup inside each bank avoids a central predictor-wide CAM.
+  if (hasLookup) {
+    val lookupSetIdx = io.lookupSetIdx.get
+    io.lookup.get.zipWithIndex.foreach { case (resp, portIdx) =>
+      val hitVec = VecInit(entries(portIdx).zip(valids(portIdx)).map { case (entry, valid) =>
+        valid && entry.setIdx === lookupSetIdx
+      })
+      XSError(PopCount(hitVec) > 1.U, f"WriteBuffer_$nameSuffix lookup should hit at most one entry")
+      resp.valid := hitVec.asUInt.orR
+      resp.bits  := Mux1H(hitVec, entries(portIdx))
+    }
+  }
 
   private val writePortValid = VecInit(Seq.fill(numPorts)(false.B))
   private val writePortBits  = VecInit(Seq.fill(numPorts)(0.U.asTypeOf(gen.cloneType)))

@@ -99,6 +99,7 @@ class TageTable(
         WriteBufferSize,
         numPorts = NumWays,
         hasCnt = true,
+        hasLookup = true,
         nameSuffix = s"tageTable${tableIdx}_${bankIdx}"
       )).suggestName(s"tage_entry_write_buffer_bank${bankIdx}")
     }
@@ -106,11 +107,12 @@ class TageTable(
   // use a write buffer to store a usefulCtr write request
   private val usefulCtrWriteBuffers =
     Seq.tabulate(NumBanks, NumWays) { (bankIdx, wayIdx) =>
-      Module(new Queue(
+      Module(new WriteBuffer(
         new UsefulCtrSramWriteReq,
-        entries = WriteBufferSize,
-        pipe = true,
-        flow = true
+        numEntries = WriteBufferSize,
+        numPorts = 1,
+        hasLookup = true,
+        nameSuffix = s"tageUsefulTable${tableIdx}_${bankIdx}_${wayIdx}"
       )).suggestName(s"tage_useful_write_buffer_bank${bankIdx}_way${wayIdx}")
     }
 
@@ -121,6 +123,9 @@ class TageTable(
       io.readReq(1).valid && io.readReq(1).bits.bankMask(bankIdx)
     )
     val readSetIdx = Mux(readValid(0), io.readReq(0).bits.setIdx, io.readReq(1).bits.setIdx)
+
+    entryWriteBuffers(bankIdx).io.lookupSetIdx.get := readSetIdx
+    usefulCtrWriteBuffers(bankIdx).foreach(_.io.lookupSetIdx.get := readSetIdx)
 
     entryBank.foreach { way =>
       way.io.r.req.valid       := readValid.reduce(_ || _)
@@ -153,9 +158,9 @@ class TageTable(
     bankBuffer.zipWithIndex.foreach { case (wayBuffer, wayIdx) =>
       val writeValid =
         writeReqValid && writeReq.bankMask(bankIdx) && writeReq.wayMask(wayIdx) && writeReq.writeUsefulEn(wayIdx)
-      wayBuffer.io.enq.valid          := writeValid
-      wayBuffer.io.enq.bits.setIdx    := writeReq.setIdx
-      wayBuffer.io.enq.bits.usefulCtr := writeReq.usefulCtrs(wayIdx)
+      wayBuffer.io.write.head.valid          := writeValid
+      wayBuffer.io.write.head.bits.setIdx    := writeReq.setIdx
+      wayBuffer.io.write.head.bits.usefulCtr := writeReq.usefulCtrs(wayIdx)
     }
   }
 
@@ -187,14 +192,15 @@ class TageTable(
 
     bank.zip(bankBuffer).foreach { case (way, wayBuffer) =>
       val usefulResetValid = usefulResetInFlightMask(bankIdx)
-      val usefulWriteValid = wayBuffer.io.deq.valid && !way.io.r.req.valid && !usefulResetValid
+      val bufferOut        = wayBuffer.io.read.head
+      val usefulWriteValid = bufferOut.valid && !way.io.r.req.valid && !usefulResetValid
       way.io.w.apply(
         usefulResetValid || usefulWriteValid,
-        Mux(usefulResetValid, UsefulCounter.Zero, wayBuffer.io.deq.bits.usefulCtr),
-        Mux(usefulResetValid, usefulResetSetIdx(bankIdx), wayBuffer.io.deq.bits.setIdx),
+        Mux(usefulResetValid, UsefulCounter.Zero, bufferOut.bits.usefulCtr),
+        Mux(usefulResetValid, usefulResetSetIdx(bankIdx), bufferOut.bits.setIdx),
         1.U(1.W) // way mask
       )
-      wayBuffer.io.deq.ready := way.io.w.req.ready && !way.io.r.req.valid && !usefulResetValid
+      bufferOut.ready := way.io.w.req.ready && !way.io.r.req.valid && !usefulResetValid
     }
   }
 
@@ -202,18 +208,45 @@ class TageTable(
     val readBankMaskNext          = RegEnable(io.readReq(i).bits.bankMask, io.readReq(i).valid)
     val readDuringUsefulResetNext = RegEnable(readDuringUsefulReset(i), io.readReq(i).valid)
 
-    resp.entries := Mux1H(
+    val bypassValidNext = RegEnable(
+      VecInit(entryWriteBuffers.map(buffer => VecInit(buffer.io.lookup.get.map(_.valid)))),
+      io.readReq(i).valid
+    )
+    val bypassEntryNext = RegEnable(
+      VecInit(entryWriteBuffers.map(buffer => VecInit(buffer.io.lookup.get.map(_.bits)))),
+      io.readReq(i).valid
+    )
+    val usefulBypassValidNext = RegEnable(
+      VecInit(usefulCtrWriteBuffers.map(bank => VecInit(bank.map(_.io.lookup.get.head.valid)))),
+      io.readReq(i).valid
+    )
+    val usefulBypassDataNext = RegEnable(
+      VecInit(usefulCtrWriteBuffers.map(bank => VecInit(bank.map(_.io.lookup.get.head.bits.usefulCtr)))),
+      io.readReq(i).valid
+    )
+
+    val sramEntries = Mux1H(
       readBankMaskNext,
       entrySram.map(bank => VecInit(bank.map(way => way.io.r.resp.data.head)))
     )
-    resp.usefulCtrs := Mux(
-      readDuringUsefulResetNext,
-      VecInit.fill(NumWays)(UsefulCounter.Zero),
-      Mux1H(
-        readBankMaskNext,
-        usefulCtrSram.map(bank => VecInit(bank.map(way => way.io.r.resp.data.head)))
-      )
+    val selectedBypassValid = Mux1H(readBankMaskNext, bypassValidNext)
+    val selectedBypassEntry = Mux1H(readBankMaskNext, bypassEntryNext)
+    resp.entries.zipWithIndex.foreach { case (entry, wayIdx) =>
+      entry := Mux(selectedBypassValid(wayIdx), selectedBypassEntry(wayIdx).entry, sramEntries(wayIdx))
+    }
+    val sramUsefulCtrs = Mux1H(
+      readBankMaskNext,
+      usefulCtrSram.map(bank => VecInit(bank.map(way => way.io.r.resp.data.head)))
     )
+    val selectedUsefulBypassValid = Mux1H(readBankMaskNext, usefulBypassValidNext)
+    val selectedUsefulBypassData  = Mux1H(readBankMaskNext, usefulBypassDataNext)
+    resp.usefulCtrs.zipWithIndex.foreach { case (ctr, wayIdx) =>
+      ctr := Mux(
+        readDuringUsefulResetNext,
+        UsefulCounter.Zero,
+        Mux(selectedUsefulBypassValid(wayIdx), selectedUsefulBypassData(wayIdx), sramUsefulCtrs(wayIdx))
+      )
+    }
   }
 
   io.sramResetDone := (

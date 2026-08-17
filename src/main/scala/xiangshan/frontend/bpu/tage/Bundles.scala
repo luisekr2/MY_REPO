@@ -95,7 +95,9 @@ class EntrySramWriteReq(implicit p: Parameters, info: TageTableInfo) extends Wri
   override def cnt: Option[SaturateCounter] = Some(entry.takenCtr)
 }
 
-class UsefulCtrSramWriteReq(implicit p: Parameters, info: TageTableInfo) extends TageBundle {
+class UsefulCtrSramWriteReq(implicit p: Parameters, info: TageTableInfo)
+    extends WriteReqBundle
+    with HasTageParameters {
   val setIdx:    UInt            = UInt(SetIdxWidth.W)
   val usefulCtr: SaturateCounter = UsefulCounter()
 }
