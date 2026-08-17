@@ -81,6 +81,8 @@ case class XSCoreParameters
   EnableJal: Boolean = false,
   EnableSv48: Boolean = true,
   EnableCommitGHistDiff: Boolean = true,
+  RobCompressEn: Boolean = false,
+  FusionEnable: Boolean = true,
   CacheLineSize: Int = 512,
   DecodeWidth: Int = 8,
   RenameWidth: Int = 8,
@@ -515,6 +517,8 @@ case class XSCoreParameters
       fakeIntPreg
     ),
     (if (EnableBackendV2Config) backend.BackendV2SchdParams.iqWakeUpParams else iqWakeUpParams),
+    RobCompressEn,
+    FusionEnable,
   )
 
   // Parameters for trace extension.
