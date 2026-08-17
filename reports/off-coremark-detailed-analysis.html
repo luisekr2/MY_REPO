@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>ROB Compression OFF · CoreMark 상세 분석</title>
+  <style>
+    :root {
+      --ink: #f4f1e8;
+      --muted: #a7aaa5;
+      --paper: #101310;
+      --panel: #171b17;
+      --panel-2: #1e231e;
+      --line: #343a33;
+      --lime: #c8f25b;
+      --cyan: #6adcd6;
+      --amber: #ffbd66;
+      --red: #ff7b70;
+      --shadow: 0 24px 70px rgba(0,0,0,.34);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 84% 5%, rgba(106,220,214,.10), transparent 25rem),
+        radial-gradient(circle at 0 34%, rgba(200,242,91,.07), transparent 30rem),
+        var(--paper);
+      font-family: Inter, Pretendard, "Noto Sans KR", system-ui, sans-serif;
+      line-height: 1.65;
+    }
+    body::before {
+      content: "";
+      position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      opacity: .17;
+      background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    a { color: var(--cyan); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    a:hover { color: var(--lime); }
+    .wrap { width: min(1180px, calc(100% - 40px)); margin: auto; }
+    .hero { padding: 72px 0 50px; border-bottom: 1px solid var(--line); }
+    .eyebrow, .kicker {
+      color: var(--lime); text-transform: uppercase; letter-spacing: .14em;
+      font: 700 12px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    h1 {
+      max-width: 940px; margin: 18px 0 20px; letter-spacing: -.045em;
+      font-size: clamp(42px, 7vw, 86px); line-height: .98; font-weight: 750;
+    }
+    h1 span { color: var(--lime); }
+    .lede { max-width: 780px; color: #c8cbc5; font-size: clamp(17px, 2vw, 21px); }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 30px; }
+    .pill {
+      padding: 7px 11px; border: 1px solid var(--line); border-radius: 99px;
+      color: var(--muted); background: rgba(23,27,23,.75);
+      font: 600 12px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .pill.good { color: #10200c; border-color: var(--lime); background: var(--lime); }
+    .layout { display: grid; grid-template-columns: 220px minmax(0,1fr); gap: 48px; padding: 52px 0 90px; }
+    nav { position: sticky; top: 26px; align-self: start; }
+    nav .kicker { margin-bottom: 14px; color: var(--muted); }
+    nav a {
+      display: block; padding: 8px 0; color: var(--muted); border-bottom: 1px solid transparent;
+      text-decoration: none; font-size: 14px;
+    }
+    nav a:hover { color: var(--ink); border-color: var(--line); }
+    main { min-width: 0; }
+    section { scroll-margin-top: 30px; margin-bottom: 72px; }
+    h2 { margin: 8px 0 23px; letter-spacing: -.025em; font-size: clamp(28px, 4vw, 42px); line-height: 1.15; }
+    h3 { margin: 0 0 10px; font-size: 17px; }
+    p { margin: 0 0 16px; }
+    .muted { color: var(--muted); }
+    .verdict {
+      position: relative; overflow: hidden; padding: 30px; border: 1px solid #4c5e2e;
+      background: linear-gradient(125deg, rgba(200,242,91,.12), rgba(106,220,214,.04));
+      box-shadow: var(--shadow);
+    }
+    .verdict::after {
+      content: "PASS"; position: absolute; right: -12px; bottom: -31px;
+      color: rgba(200,242,91,.08); font-size: 120px; font-weight: 900; letter-spacing: -.08em;
+    }
+    .verdict strong { display: block; max-width: 760px; font-size: 23px; line-height: 1.35; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+    .grid.three { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .card {
+      min-width: 0; padding: 22px; border: 1px solid var(--line);
+      background: linear-gradient(145deg, var(--panel), #141714); border-radius: 4px;
+    }
+    .metric { min-height: 150px; }
+    .metric .label { color: var(--muted); font-size: 13px; }
+    .metric .value {
+      margin: 17px 0 9px; color: var(--ink); letter-spacing: -.04em;
+      font: 700 clamp(27px, 4vw, 42px)/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .metric .value.lime { color: var(--lime); }
+    .metric .value.cyan { color: var(--cyan); }
+    .metric small { display: block; color: var(--muted); line-height: 1.45; }
+    .callout {
+      margin-top: 16px; padding: 17px 19px; border-left: 3px solid var(--amber);
+      background: rgba(255,189,102,.07); color: #ded7cb;
+    }
+    .callout.good { border-color: var(--lime); background: rgba(200,242,91,.07); }
+    .formula {
+      display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 14px;
+      margin: 18px 0; padding: 24px; background: #0c0f0c; border: 1px solid var(--line);
+      text-align: center; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .formula b { display: block; color: var(--lime); font-size: 24px; }
+    .formula span { color: var(--muted); font-size: 12px; }
+    .formula .op { color: var(--muted); font-size: 22px; }
+    .bar-set { padding: 24px; border: 1px solid var(--line); background: var(--panel); }
+    .bar-row { display: grid; grid-template-columns: 150px 1fr 92px; gap: 14px; align-items: center; margin: 13px 0; }
+    .bar-label, .bar-value { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .bar-value { text-align: right; color: var(--muted); }
+    .track { height: 10px; background: #0b0d0b; border: 1px solid #292d28; overflow: hidden; }
+    .fill { display: block; height: 100%; background: linear-gradient(90deg, var(--lime), var(--cyan)); }
+    .fill.amber { background: var(--amber); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 13px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    td code, code {
+      padding: .12em .35em; color: #d9eaa8; background: #0b0e0b;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em;
+    }
+    .status { white-space: nowrap; font-weight: 750; }
+    .status.fail { color: var(--red); }
+    .status.pass { color: var(--lime); }
+    .timeline { position: relative; margin-left: 7px; padding-left: 28px; border-left: 1px solid var(--line); }
+    .event { position: relative; padding: 0 0 31px; }
+    .event:last-child { padding-bottom: 0; }
+    .event::before {
+      content: ""; position: absolute; left: -34px; top: 5px; width: 10px; height: 10px;
+      border: 2px solid var(--paper); border-radius: 50%; background: var(--red); box-shadow: 0 0 0 1px var(--line);
+    }
+    .event.pass::before { background: var(--lime); }
+    .event time { color: var(--muted); font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .event p { margin: 4px 0 0; }
+    .log {
+      overflow-x: auto; margin: 18px 0 0; padding: 20px; border: 1px solid var(--line);
+      background: #090b09; color: #cfd8c5; line-height: 1.65;
+      font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .log .ok { color: var(--lime); }
+    .log .dim { color: #747b72; }
+    .limits { counter-reset: item; display: grid; gap: 10px; }
+    .limit { position: relative; padding: 18px 20px 18px 58px; border: 1px solid var(--line); background: var(--panel); }
+    .limit::before {
+      counter-increment: item; content: "0" counter(item); position: absolute; left: 18px; top: 18px;
+      color: var(--amber); font: 700 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .sources a {
+      display: flex; justify-content: space-between; gap: 20px; padding: 13px 0;
+      border-bottom: 1px solid var(--line); text-decoration: none;
+    }
+    .sources a span:last-child { color: var(--muted); font: 11px ui-monospace, monospace; }
+    footer { padding: 28px 0 44px; color: var(--muted); border-top: 1px solid var(--line); font-size: 12px; }
+    @media (max-width: 820px) {
+      .layout { grid-template-columns: 1fr; }
+      nav { display: none; }
+      .grid, .grid.three { grid-template-columns: 1fr; }
+      .formula { grid-template-columns: 1fr; }
+      .formula .op { transform: rotate(90deg); }
+      .bar-row { grid-template-columns: 110px 1fr; }
+      .bar-value { grid-column: 2; }
+      .table-scroll { overflow-x: auto; }
+      table { min-width: 700px; }
+    }
+    @media print {
+      :root { --paper:#fff; --panel:#fff; --ink:#111; --muted:#555; --line:#bbb; }
+      body { background:#fff; }
+      nav { display:none; }
+      .layout { display:block; }
+      section { break-inside:avoid; }
+      .hero { padding-top:30px; }
+      .card, .verdict, .bar-set, .limit { box-shadow:none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <div class="eyebrow">XiangShan · Kunminghu V3 · Evidence report 01</div>
+      <h1>ROB Compression <span>OFF</span><br>CoreMark 상세 분석</h1>
+      <p class="lede">최종 smoke run의 기능 정합성, OFF 불변식, 실행 성능과 실패→복구 이력을 원본 로그에서 재구성한 단일 실행 증거 보고서입니다.</p>
+      <div class="hero-meta">
+        <span class="pill good">FINAL RUN · PASS</span>
+        <span class="pill">2026-07-28 KST</span>
+        <span class="pill">seed=1</span>
+        <span class="pill">2 iterations</span>
+        <span class="pill">commit 4cf8b8d4ae · dirty</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap layout">
+    <nav aria-label="보고서 목차">
+      <div class="kicker">Contents</div>
+      <a href="#verdict">01 · 판정</a>
+      <a href="#metrics">02 · 핵심 수치</a>
+      <a href="#invariants">03 · OFF 불변식</a>
+      <a href="#correctness">04 · 기능 정합성</a>
+      <a href="#history">05 · 실패와 복구</a>
+      <a href="#resources">06 · 자원·빌드</a>
+      <a href="#limits">07 · 해석 한계</a>
+      <a href="#sources">08 · 증거 파일</a>
+    </nav>
+
+    <main>
+      <section id="verdict">
+        <div class="kicker">01 / Executive verdict</div>
+        <h2>OFF 단일 실행은 유효하다</h2>
+        <div class="verdict">
+          <strong>최종 실행은 difftest를 켠 상태로 GOOD TRAP과 exit 0에 도달했고, 압축 비활성화의 네 가지 카운터 불변식을 모두 만족했습니다.</strong>
+          <p class="muted" style="margin:14px 0 0;max-width:760px">따라서 이 실행은 “ROB 압축 OFF 구현의 기능 smoke test”로 채택할 수 있습니다. 단, 최종 표본은 1회이므로 ON 대비 성능 효과나 반복 분산을 말하는 실험 결과로는 아직 불충분합니다.</p>
+        </div>
+      </section>
+
+      <section id="metrics">
+        <div class="kicker">02 / Final run</div>
+        <h2>최종 실행 핵심 수치</h2>
+        <div class="grid three">
+          <article class="card metric"><div class="label">기능 종료</div><div class="value lime">GOOD</div><small>HIT GOOD TRAP · process exit 0</small></article>
+          <article class="card metric"><div class="label">Core-0 IPC</div><div class="value cyan">2.173646</div><small>663,688 instr / 305,334 cycles</small></article>
+          <article class="card metric"><div class="label">CoreMark 보고값</div><div class="value">842</div><small>2 iterations · 2,374 ms · CRC valid</small></article>
+          <article class="card metric"><div class="label">ROB 입력 명령</div><div class="value">795,341</div><small>rename 관측 누적값</small></article>
+          <article class="card metric"><div class="label">ROB 할당 엔트리</div><div class="value">795,341</div><small>입력 명령과 정확히 동일</small></article>
+          <article class="card metric"><div class="label">ROB stall cycle</div><div class="value">3,154</div><small>전체 cycleCnt 대비 약 1.033%</small></article>
+        </div>
+        <div class="callout">
+          <strong>CoreMark “842”는 로그의 출력값을 그대로 인용했습니다.</strong> 2회 반복의 짧은 smoke workload이며, 공식 CoreMark 제출·비교 점수로 해석하지 않습니다.
+        </div>
+      </section>
+
+      <section id="invariants">
+        <div class="kicker">03 / Compression-off invariants</div>
+        <h2>압축은 실제로 0이었다</h2>
+        <p class="muted">설정 이름만 OFF인 것이 아니라 rename/CompressUnit의 최종 의사결정 경로가 꺼졌는지를 누적 카운터로 교차 확인했습니다.</p>
+        <div class="formula" aria-label="OFF 카운터 불변식">
+          <div><b>795,341</b><span>rob_input_instr</span></div>
+          <div class="op">=</div>
+          <div><b>795,341</b><span>rob_allocated_entries</span></div>
+          <div class="op">+</div>
+          <div><b>0</b><span>rob_entries_saved</span></div>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <h3>불변식 A · 할당 보존</h3>
+            <p><code>input − allocated = 0</code></p>
+            <p class="muted">ROB로 들어간 각 명령이 엔트리 하나를 할당했습니다. 압축에 의한 엔트리 병합이 없습니다.</p>
+          </article>
+          <article class="card">
+            <h3>불변식 B · 압축 사건 부재</h3>
+            <p><code>compressed = 0</code> · <code>saved = 0</code></p>
+            <p class="muted">압축 대상 판정과 실제 엔트리 절감이 모두 0입니다. OFF acceptance criterion을 직접 만족합니다.</p>
+          </article>
+        </div>
+        <div class="callout good"><strong>판정: PASS.</strong> 네 카운터 사이의 산술 관계도 일관되며 음수·누락·부분 압축 징후가 없습니다.</div>
+      </section>
+
+      <section id="correctness">
+        <div class="kicker">04 / Functional correctness</div>
+        <h2>세 겹의 종료 증거</h2>
+        <div class="bar-set" aria-label="검증 항목">
+          <div class="bar-row"><div class="bar-label">difftest</div><div class="track"><span class="fill" style="width:100%"></span></div><div class="bar-value">enabled · pass</div></div>
+          <div class="bar-row"><div class="bar-label">CoreMark CRC</div><div class="track"><span class="fill" style="width:100%"></span></div><div class="bar-value">0x72be · valid</div></div>
+          <div class="bar-row"><div class="bar-label">process status</div><div class="track"><span class="fill" style="width:100%"></span></div><div class="bar-value">exit 0</div></div>
+        </div>
+        <pre class="log"><span class="dim">The first instruction of core 0 has commited.</span> Difftest enabled.
+Running CoreMark for 2 iterations
+[0]crcfinal      : 0x72be
+Finished in 2374 ms.
+CoreMark Iterations/Sec 842
+<span class="ok">Core 0: HIT GOOD TRAP at pc = 0x80001ca0</span>
+Core-0 instrCnt = 663688, cycleCnt = 305334, IPC = 2.173646</pre>
+        <div class="grid" style="margin-top:14px">
+          <article class="card"><h3>Commit 계수 차이</h3><p><code>commitInstr=663,693</code>은 최종 요약의 <code>instrCnt=663,688</code>보다 5 큽니다.</p><p class="muted">계측 경계가 다른 두 카운터의 0.00075% 차이입니다. GOOD TRAP·difftest·CRC를 뒤집는 오류 증거는 아니지만 비교 실험에서는 같은 카운터 정의만 사용해야 합니다.</p></article>
+          <article class="card"><h3>Rename 유입과 commit</h3><p>795,341 rename 입력 중 663,693이 commit 계수에 반영됐습니다.</p><p class="muted">차이 131,648(입력의 16.55%)은 speculative path/flush가 포함되는 서로 다른 단계의 누적값입니다. 이를 “미실행 명령”이나 손실로 해석하지 않습니다.</p></article>
+        </div>
+      </section>
+
+      <section id="history">
+        <div class="kicker">05 / Failure → recovery</div>
+        <h2>실패는 seed가 아니었다</h2>
+        <p class="muted">파일 수정 시각과 로그 서명을 기준으로 재구성한 진단 이력입니다. 중간 로그는 성능 표본에서 제외합니다.</p>
+        <div class="timeline">
+          <article class="event">
+            <time>2026-07-27 19:54 KST · coremark.log</time>
+            <p><strong>ABORT @ 0x80002818</strong> — 174 instructions 뒤 <code>a4</code>가 <code>…0000 ↔ …0008</code>로 불일치. exit 1.</p>
+          </article>
+          <article class="event">
+            <time>2026-07-27 21:22 KST · coremark-fixed.log / seed0.log</time>
+            <p><strong>같은 실패 재현</strong> — seed 1과 seed 0 모두 동일 PC, 동일 174 instructions, 동일 register delta. 무작위 seed 원인 가설을 배제.</p>
+          </article>
+          <article class="event">
+            <time>2026-07-27 22:59 KST · coremark-no-fusion.log</time>
+            <p><strong>진단 변형도 실패</strong> — 15,000 cycle no-commit 경고 후 <code>0x800027c6</code>에서 반대 방향의 동일 8-byte delta. exit 1.</p>
+          </article>
+          <article class="event">
+            <time>2026-07-28 01:00 KST · rebuilt emulator</time>
+            <p><strong>OFF 경로 보강 후 재빌드 완료</strong> — fusion 비활성화, 최종 CompressUnit gate, rename의 numWB 계산 및 RF arbitration tie-break 수정이 dirty tree에 존재.</p>
+          </article>
+          <article class="event pass">
+            <time>2026-07-28 09:59 KST · coremark-final.log</time>
+            <p><strong>PASS</strong> — 663,688 instructions, GOOD TRAP, CRC 정상, OFF 카운터 0, exit 0.</p>
+          </article>
+        </div>
+        <div class="callout">
+          <strong>인과관계 주의.</strong> 현재 증거는 “수정 묶음 + 재빌드 뒤 성공”을 보여주지만, 각 코드 변경을 개별 A/B한 로그가 없어 특정 한 줄을 단독 root cause로 확정할 수는 없습니다.
+        </div>
+      </section>
+
+      <section id="resources">
+        <div class="kicker">06 / Runtime & build resources</div>
+        <h2>느린 시뮬레이션, 빡빡한 빌드</h2>
+        <div class="grid">
+          <article class="card metric"><div class="label">최종 run wall time</div><div class="value">27:23.57</div><small>host report 1,643,511 ms와 59 ms 차이</small></article>
+          <article class="card metric"><div class="label">최종 run peak RSS</div><div class="value">187.4 MiB</div><small>191,868 KiB · CPU utilization 199%</small></article>
+          <article class="card metric"><div class="label">EMU build wall time</div><div class="value">1:59:35</div><small>exit 0 · CPU utilization 113%</small></article>
+          <article class="card metric"><div class="label">EMU build peak RSS</div><div class="value">30.45 GiB</div><small>31,924,472 KiB · host RAM 31.34 GiB</small></article>
+        </div>
+        <div class="callout"><strong>재현성 리스크:</strong> emulator 빌드 peak RSS가 manifest의 물리 메모리 약 97.2%에 달합니다. 동일 WSL2 환경에서는 swap 16 GiB와 빌드 동시성 제한을 유지하는 편이 안전합니다.</div>
+      </section>
+
+      <section id="limits">
+        <div class="kicker">07 / Interpretation boundaries</div>
+        <h2>이 보고서가 말하지 않는 것</h2>
+        <div class="limits">
+          <div class="limit"><strong>ON 대비 효과가 아닙니다.</strong><br><span class="muted">이 문서는 OFF 단일 실행의 유효성 분석입니다. 동일 최종 코드·조건의 ON 표본과 직접 비교하지 않았습니다.</span></div>
+          <div class="limit"><strong>반복 통계가 없습니다.</strong><br><span class="muted">계획된 3회가 아니라 최종 성공 1회뿐입니다. 평균, 표준편차, 신뢰구간, 유의성은 계산할 수 없습니다.</span></div>
+          <div class="limit"><strong>CoreMark 공식 점수 보고서가 아닙니다.</strong><br><span class="muted">2 iterations의 smoke binary이며 시스템 포트·컴파일 플래그·공식 run rule 검증이 없습니다.</span></div>
+          <div class="limit"><strong>완전한 깨끗한 소스 상태가 아닙니다.</strong><br><span class="muted">기준 commit은 고정됐지만 실행 로그가 <code>dirty: 1</code>을 명시합니다. 재현에는 기준 SHA뿐 아니라 현재 7개 파일의 patch 보존이 필요합니다.</span></div>
+        </div>
+      </section>
+
+      <section id="sources">
+        <div class="kicker">08 / Evidence index</div>
+        <h2>원본 증거 파일</h2>
+        <div class="sources">
+          <a href="../smoke/off/coremark-final.log"><span>최종 실행 로그</span><span>coremark-final.log</span></a>
+          <a href="../smoke/off/coremark-final.time"><span>최종 실행 자원 측정</span><span>coremark-final.time</span></a>
+          <a href="../smoke/off/coremark.log"><span>최초 실패 로그</span><span>coremark.log</span></a>
+          <a href="../smoke/off/coremark-fixed.log"><span>중간 수정 후 실패 로그</span><span>coremark-fixed.log</span></a>
+          <a href="../smoke/off/coremark-seed0.log"><span>seed 0 재현 로그</span><span>coremark-seed0.log</span></a>
+          <a href="../smoke/off/coremark-no-fusion.log"><span>no-fusion 진단 로그</span><span>coremark-no-fusion.log</span></a>
+          <a href="../build/off-emu.log"><span>최종 emulator 빌드 로그</span><span>off-emu.log</span></a>
+          <a href="../build/off-emu.time"><span>최종 emulator 빌드 자원 측정</span><span>off-emu.time</span></a>
+          <a href="../environment-manifest.txt"><span>실행 환경·repository manifest</span><span>environment-manifest.txt</span></a>
+        </div>
+        <p class="muted" style="margin-top:22px">분석 기준: 원본 로그의 출력값과 <code>/usr/bin/time -v</code> 기록. MiB/GiB는 1024 기반으로 환산했으며, 백분율은 표시된 정수 카운터에서 계산했습니다.</p>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    <div class="wrap">Generated for 01_GEN2_COMP · ROB compression OFF evidence review · 2026-07-28 Asia/Seoul</div>
+  </footer>
+</body>
+</html>
