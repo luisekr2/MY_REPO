@@ -1,0 +1,6 @@
+config,valid,instr,cycles,ipc,mispredicts,tage_read_conflict,sc_candidates,sc_repairs,compressed_instr,compressed_entries
+off,True,526256,248004,2.121966,6168,22099,,,0,0
+on,True,526255,240263,2.190329,6168,24342,,,668233,327266
+branch-isolated,True,526260,238145,2.20983,6089,23233,,,524422,259555
+tage-only,True,526259,245738,2.141545,6639,4543,,,528971,259894
+tage-sc-shadow2,True,526258,241750,2.176869,6368,4672,43732,3930,527398,259419

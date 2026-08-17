@@ -1,0 +1,17 @@
+
+MCF SPEC CPU2006 version 1.10
+Copyright (c) 1998-2000 Zuse Institut Berlin (ZIB)
+Copyright (c) 2000-2002 Andreas Loebel & ZIB
+Copyright (c) 2003-2005 Andreas Loebel
+
+nodes                      : 512
+active arcs                : 4078
+simplex iterations         : 1981
+objective value            : 1290008886
+new implicit arcs          : 6526
+active arcs                : 10604
+simplex iterations         : 2150
+objective value            : 1270008615
+erased arcs                : 6419
+checksum                   : 4264
+done

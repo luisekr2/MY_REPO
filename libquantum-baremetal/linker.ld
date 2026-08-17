@@ -1,0 +1,15 @@
+ENTRY(_start)
+
+SECTIONS
+{
+  . = 0x80000000;
+  .text : { *(.text.init) *(.text .text.*) }
+  .rodata : { *(.rodata .rodata.*) }
+  .data : { *(.data .data.*) }
+  .bss : {
+    *(.bss .bss.* COMMON)
+    . = ALIGN(16);
+    . += 0x10000;
+    _stack_top = .;
+  }
+}

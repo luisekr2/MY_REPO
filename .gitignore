@@ -1,0 +1,11 @@
+# Toolchains and third-party checkout are reproducible and too large for this archive.
+/toolchain/
+/spec-int-2006/
+
+# Generated build trees and raw simulator output.
+**/build/
+**/native-build/
+/results/**/*.log
+/results/**/*.time
+
+# Preserve curated Markdown/CSV reports, sources, inputs, and small ELF/BIN images.
