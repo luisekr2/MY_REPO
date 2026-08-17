@@ -590,7 +590,7 @@ class CtrlBlockImp(
 
   val decodeHasException = decode.io.out.map(x => x.bits.exceptionVec.orR || (!TriggerAction.isNone(x.bits.trigger)))
   // fusion decoder
-  fusionDecoder.io.disableFusion := disableFusion
+  fusionDecoder.io.disableFusion := disableFusion || !backendParams.robCompressEn.B || !backendParams.fusionEn.B
   for (i <- 0 until DecodeWidth) {
     fusionDecoder.io.in(i).valid := decode.io.out(i).valid && !decodeHasException(i)
     fusionDecoder.io.in(i).bits := decode.io.out(i).bits.instr
@@ -620,8 +620,8 @@ class CtrlBlockImp(
     rename.io.fusionInfo(i) := fusionDecoder.io.info(i)
 
     // update the first RenameWidth - 1 instructions
-    decode.io.fusion(i) := fusionDecoder.io.out(i).valid && rename.io.out(i).fire
-    when (fusionDecoder.io.out(i).valid) {
+    decode.io.fusion(i) := fusionDecoder.io.out(i).valid && rename.io.out(i).fire && backendParams.robCompressEn.B && backendParams.fusionEn.B
+    when (fusionDecoder.io.out(i).valid && backendParams.robCompressEn.B && backendParams.fusionEn.B) {
       fusionDecoder.io.out(i).bits.update(rename.io.in(i).bits)
       fusionDecoder.io.out(i).bits.update(dispatch.io.renameIn(i).bits)
       val cross2Ftq = decodePipeRename(i).bits.isLastInFtqEntry && decodePipeRename(i + 1).bits.isLastInFtqEntry && backendParams.robCompressEn.B

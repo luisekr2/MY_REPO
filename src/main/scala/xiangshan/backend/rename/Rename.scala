@@ -305,7 +305,7 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
 
   val isLastFtqVec = io.in.map(_.bits.isLastInFtqEntry)
   val isFusionVec = io.isFusionVec
-  val canRobCompressVec = io.in.map(_.bits.canRobCompress)
+  val canRobCompressVec = io.in.map(_.bits.canRobCompress && backendParams.robCompressEn.B)
   // count crossftq num in may same robentry
   val crossFtqNumVec = Wire(Vec(RenameWidth, Bool()))
   // identify cross odd ftqentry
@@ -326,13 +326,12 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
   compressUnit.io.in.zip(io.in).zip(io.validVec.zip(isFusionPair)).foreach{ case((sink, source), (valid, isFusion)) =>
     sink.valid := valid && !io.singleStep
     sink.bits := source.bits
-    sink.bits.canRobCompress := source.bits.canRobCompress && (backendParams.robCompressEn.B || isFusion)
+    sink.bits.canRobCompress := source.bits.canRobCompress && backendParams.robCompressEn.B
   }
   compressUnit.io.oddFtqVec := oddFtqVec
   val needRobFlags = compressUnit.io.out.needRobFlags
   val instrSizesVec = compressUnit.io.out.instrSizes
   val compressMasksVec = compressUnit.io.out.masks
-
   // speculatively assign the instruction with an robIdx
   val validCount = PopCount(io.in.zip(needRobFlags).zip(io.validVec).map{ case((in, needRobFlag), valid) => valid && in.bits.lastUop && needRobFlag}) // number of instructions waiting to enter rob (from decode)
   val robIdxHead = RegInit(0.U.asTypeOf(new RobPtr))
@@ -426,6 +425,12 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
   isMove zip io.in.map(_.bits) foreach {
     case (move, in) => move := Mux(in.exceptionVec.orR, false.B, in.isMove)
   }
+  val compressedNumWBVec = compressMasksVec.map { mask =>
+    mask.asBools.zip(io.in).zip(isMove.zip(fusionValidVec)).map {
+      case ((selected, in), (move, fusion)) =>
+        Mux(selected && !move && !fusion, in.bits.numWB, 0.U)
+    }.reduce(_ +& _)
+  }
 
   val walkNeedIntDest = WireDefault(VecInit(Seq.fill(RenameWidth)(false.B)))
   val walkNeedFpDest = WireDefault(VecInit(Seq.fill(RenameWidth)(false.B)))
@@ -509,12 +514,12 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
         // rob need first uop isrvc, as it may attach interrupt to first uop(calculate pc)
         // branch need last uop isrvc, it will change in dispatch
         uops(i).isRVC := uops(i - 1).isRVC
-        uops(i).numWB := instrSizesVec(i) - PopCount(compressMasksVec(i) & (Cat(isMove.reverse) | Cat(fusionValidVec.reverse)))
+        uops(i).numWB := compressedNumWBVec(i)
       }
     }
     when(!needRobFlags(i)) {
       uops(i).lastUop := false.B
-      uops(i).numWB := instrSizesVec(i) - PopCount(compressMasksVec(i) & (Cat(isMove.reverse) | Cat(fusionValidVec.reverse)))
+      uops(i).numWB := compressedNumWBVec(i)
       if (i < RenameWidth - 1) {
         uops(i).crossFtqCommit := uops(i + 1).crossFtqCommit
         uops(i).crossFtq := uops(i + 1).crossFtq
@@ -1030,6 +1035,14 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
   XSPerfAccumulate("in_valid_count", PopCount(io.in.map(_.valid)))
   XSPerfAccumulate("in_fire_count", PopCount(io.in.map(_.fire)))
   XSPerfAccumulate("in_valid_not_ready_count", PopCount(io.in.map(x => x.valid && !x.ready)))
+  val robInputInstr = PopCount(io.in.zip(io.validVec).map { case (in, valid) => valid && in.bits.lastUop })
+  val robCompressedInstr = PopCount(io.in.zip(io.validVec).zip(instrSizesVec).map {
+    case ((in, valid), size) => valid && in.bits.lastUop && size > 1.U
+  })
+  XSPerfAccumulate("rob_input_instr", Mux(canOut, robInputInstr, 0.U))
+  XSPerfAccumulate("rob_allocated_entries", Mux(canOut, validCount, 0.U))
+  XSPerfAccumulate("rob_compressed_instr", Mux(canOut, robCompressedInstr, 0.U))
+  XSPerfAccumulate("rob_entries_saved", Mux(canOut, robInputInstr - validCount, 0.U))
   XSPerfAccumulate("wait_cycle", !io.in.head.valid && dispatchCanAcc)
   for (i <- 1 to RenameWidth){
     XSPerfAccumulate(s"load_num_$i", PopCount(io.in.map(x => x.fire && FuType.isLoad(x.bits.fuType))) === i.U)
