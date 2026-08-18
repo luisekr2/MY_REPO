@@ -797,10 +797,32 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
   val genSnapshot = Cat(io.out.map(out => out.fire && out.bits.snapshot)).orR
   val lastCycleCreateSnpt = RegInit(false.B)
   lastCycleCreateSnpt := genSnapshot && !io.snptIsFull
-  val sameSnptDistance = (RobCommitWidth * 4).U
-  // notInSameSnpt: 1.robidxHead - snapLastEnq >= sameSnptDistance 2.no snap
-  val notInSameSnpt = GatedValidRegNext(distanceBetween(robIdxHeadNext, io.snptLastEnq.bits) >= sameSnptDistance || !io.snptLastEnq.valid)
-  val allowSnpt = if (EnableRenameSnapshot) notInSameSnpt && !lastCycleCreateSnpt && io.in.head.bits.firstUop else false.B
+  private val sameSnptDistance = RobCommitWidth * 4
+  private val instrDistanceWidth = log2Ceil(sameSnptDistance + RenameWidth + 1)
+  val renamedArchInstrs = PopCount(io.in.zip(io.validVec).map {
+    case (in, valid) => canOut && valid && in.bits.lastUop
+  })
+  val instrsSinceSnapshot = RegInit(0.U(instrDistanceWidth.W))
+  val nextInstrsSinceSnapshot = instrsSinceSnapshot +& renamedArchInstrs
+  when(io.redirect.valid || genSnapshot && !io.snptIsFull) {
+    instrsSinceSnapshot := 0.U
+  }.elsewhen(canOut) {
+    instrsSinceSnapshot := Mux(
+      nextInstrsSinceSnapshot >= sameSnptDistance.U,
+      sameSnptDistance.U,
+      nextInstrsSinceSnapshot
+    )
+  }
+  val robDistanceReached = distanceBetween(robIdxHeadNext, io.snptLastEnq.bits) >= sameSnptDistance.U
+  val instrDistanceReached = instrsSinceSnapshot >= sameSnptDistance.U
+  val selectedDistanceReached = if (RenameSnapshotUseInstrDistance) instrDistanceReached else robDistanceReached
+  // Use architectural-instruction distance under ROB compression so physical entry sharing does not
+  // unintentionally make recovery snapshots sparse.  Reset after redirects to discard wrong-path distance.
+  val notInSameSnpt = GatedValidRegNext(selectedDistanceReached || !io.snptLastEnq.valid)
+  val snapshotSpacingAllows = if (EnableRenameSnapshot) {
+    notInSameSnpt && !lastCycleCreateSnpt && io.in.head.bits.firstUop
+  } else false.B
+  val allowSnpt = snapshotSpacingAllows
   io.out.zip(io.in).foreach{ case (out, in) => out.bits.snapshot := allowSnpt && FuType.isJump(in.bits.fuType) && in.fire }
   io.out.map{ x =>
     x.bits.hasException := x.bits.exceptionVec.orR || TriggerAction.isDmode(x.bits.trigger)
@@ -809,6 +831,7 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
     dontTouch(robIdxHeadNext)
     dontTouch(notInSameSnpt)
     dontTouch(genSnapshot)
+    dontTouch(instrsSinceSnapshot)
     fusionValidVec.foreach{ fusionValid =>
       dontTouch(fusionValid)
     }
@@ -1064,6 +1087,9 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
   XSPerfAccumulate("rob_compressed_instr", Mux(canOut, robCompressedInstr, 0.U))
   XSPerfAccumulate("rob_entries_saved", Mux(canOut, robInputInstr - validCount, 0.U))
   XSPerfAccumulate("rob_control_flow_shared_entry", Mux(canOut, robControlFlowSharedEntry, 0.U))
+  XSPerfAccumulate("rename_snapshot_create", genSnapshot && !io.snptIsFull)
+  XSPerfAccumulate("rename_snapshot_full_candidate", genSnapshot && io.snptIsFull)
+  XSPerfAccumulate("rename_snapshot_instr_distance_reached_cycles", instrDistanceReached)
   val allocatedRobGroups = io.in.zip(io.validVec).zip(needRobFlags).map {
     case ((in, valid), needRob) => canOut && valid && in.bits.lastUop && needRob
   }

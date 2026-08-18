@@ -95,6 +95,7 @@ case class XSCoreParameters
   MaxUopSize: Int = 65,
   EnableRenameSnapshot: Boolean = true,
   RenameSnapshotNum: Int = 4,
+  RenameSnapshotUseInstrDistance: Boolean = false,
   // TODO: New frontend parameters system below. Replace the old parameters above during development.
   frontendParameters: FrontendParameters = FrontendParameters(),
   EnableLoadFastWakeUp: Boolean = true, // NOTE: not supported now, make it false
@@ -675,6 +676,7 @@ trait HasXSParameter {
   def MaxUopSize = coreParams.MaxUopSize
   def EnableRenameSnapshot = coreParams.EnableRenameSnapshot
   def RenameSnapshotNum = coreParams.RenameSnapshotNum
+  def RenameSnapshotUseInstrDistance = coreParams.RenameSnapshotUseInstrDistance
   def EnableLoadFastWakeUp = coreParams.EnableLoadFastWakeUp
   def IntLogicRegs = coreParams.IntLogicRegs
   def FpLogicRegs = coreParams.FpLogicRegs

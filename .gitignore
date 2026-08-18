@@ -357,6 +357,7 @@ __pycache__
 overnight.sh
 /results/rob-compress-group-policy/
 /build-group*/
+/build-instr-snapshot/
 
 # VCS files
 simv
