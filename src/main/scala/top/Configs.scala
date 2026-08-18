@@ -714,6 +714,39 @@ class RobCompressOnScShadowInstrSnapshotConfig(n: Int = 1) extends Config(
   )
 }
 
+class RobCompressOnScShadowSnapshot8Config(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      core.copy(
+        RobCompressEn = true,
+        RenameSnapshotNum = 8,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = core.frontendParameters.bpuParameters.tageParameters.copy(
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowSnapshot8Config " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} tageReadFree=false scReadFree=true " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"snapshotInstrDistance=${core.RenameSnapshotUseInstrDistance} " +
+    s"snapshotNum=${core.RenameSnapshotNum} fusionEn=${core.backendParams.fusionEn} " +
+    s"decodeWidth=${core.DecodeWidth} renameWidth=${core.RenameWidth} " +
+    s"commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
+  )
+}
+
 class RobCompressOnScShadowGroup2Config(n: Int = 1) extends Config(
   new DefaultConfig(n).alter((site, here, up) => {
     case XSTileKey => up(XSTileKey).map { core =>

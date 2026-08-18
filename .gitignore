@@ -358,6 +358,7 @@ overnight.sh
 /results/rob-compress-group-policy/
 /build-group*/
 /build-instr-snapshot/
+/build-snapshot8/
 
 # VCS files
 simv
