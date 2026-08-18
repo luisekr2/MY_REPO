@@ -648,6 +648,45 @@ class RobCompressOnScShadowOnlyConfig(n: Int = 1) extends Config(
   )
 }
 
+/**
+  * Retain twice as many recently drained SC rows in the write-buffer shadow.
+  * ROB grouping and the predictor's SRAM geometry remain identical to the
+  * SC-shadow leader; this only extends exact stale-snapshot repair coverage.
+  */
+class RobCompressOnScShadowWriteBuffer8Config(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      core.copy(
+        RobCompressEn = true,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = core.frontendParameters.bpuParameters.tageParameters.copy(
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              WriteBufferSize = 8,
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  private val sc   = core.frontendParameters.bpuParameters.scParameters
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowWriteBuffer8Config " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} tageReadFree=false scReadFree=${sc.ReadFreeTraining} " +
+    s"scWriteBufferSize=${sc.WriteBufferSize} maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
+  )
+}
+
 class RobCompressOnScShadowGroup4Config(n: Int = 1) extends Config(
   new DefaultConfig(n).alter((site, here, up) => {
     case XSTileKey => up(XSTileKey).map { core =>

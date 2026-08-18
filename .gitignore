@@ -359,6 +359,7 @@ overnight.sh
 /build-group*/
 /build-instr-snapshot/
 /build-snapshot8/
+/build-sc-shadow8/
 
 # VCS files
 simv
