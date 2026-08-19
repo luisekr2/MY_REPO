@@ -366,6 +366,20 @@ overnight.sh
 /build-rob208-rabtail16/
 /build-rabtail16/
 /build-rab16/
+/build-tage-tail3/
+/build-tage-coalesced/
+/build-train-spill/
+/build-resolve32/
+/build-resolve-merge/
+/build-tage-8bank/
+/build-resolve-mispredict/
+/build-resolve-mispredict-safe/
+/build-tage-dual-read/
+/build-resolve-fast-drain/
+/build-no-mul-compress/
+/build-break-after-mul-tail3/
+/build-sc-lower-threshold/
+/build-sc-no-bias/
 /.ccache-rob-compress/
 
 # VCS files
