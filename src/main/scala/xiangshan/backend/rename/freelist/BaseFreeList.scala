@@ -69,8 +69,9 @@ abstract class BaseFreeList(
   val archHeadPtr = RegInit(FreeListPtr(false, 0))
   XSError(headPtr.toOH =/= headPtrOH, p"wrong one-hot reg between $headPtr and $headPtrOH")
   val headPtrOHShift = CircularShift(headPtrOH)
-  // may shift [0, RenameWidth] steps
-  val headPtrOHVec = VecInit.tabulate(RenameWidth + 1)(headPtrOHShift.left)
+  // Normal rename advances by at most RenameWidth, while recovery may drain a
+  // wider commitWidth batch from the RAB.
+  val headPtrOHVec = VecInit.tabulate(math.max(RenameWidth, commitWidth) + 1)(headPtrOHShift.left)
 
   val snapshots = SnapshotGenerator(headPtr, io.snpt.snptEnq, io.snpt.snptDeq, io.redirect, io.snpt.flushVec)
 

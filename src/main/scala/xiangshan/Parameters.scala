@@ -92,6 +92,7 @@ case class XSCoreParameters
   CommitWidth: Int = 8,
   RobCommitWidth: Int = 8,
   RabCommitWidth: Int = 8,
+  RabTailOnlyBoost: Boolean = false,
   MaxUopSize: Int = 65,
   EnableRenameSnapshot: Boolean = true,
   RenameSnapshotNum: Int = 4,
@@ -673,6 +674,7 @@ trait HasXSParameter {
   def CommitWidth = coreParams.CommitWidth
   def RobCommitWidth = coreParams.RobCommitWidth
   def RabCommitWidth = coreParams.RabCommitWidth
+  def RabTailOnlyBoost = coreParams.RabTailOnlyBoost
   def MaxUopSize = coreParams.MaxUopSize
   def EnableRenameSnapshot = coreParams.EnableRenameSnapshot
   def RenameSnapshotNum = coreParams.RenameSnapshotNum

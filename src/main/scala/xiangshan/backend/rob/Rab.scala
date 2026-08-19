@@ -113,6 +113,13 @@ class RenameBuffer(size: Int)(implicit p: Parameters) extends XSModule with HasC
 
   private val robWalkEndReg = RegInit(false.B)
   private val robWalkEnd = io.fromRob.walkEnd || robWalkEndReg
+  private val walkDrainWidth = if (RabTailOnlyBoost) {
+    Mux(robWalkEnd, RabCommitWidth.U, RobCommitWidth.U)
+  } else {
+    RabCommitWidth.U
+  }
+  private val specialWalkDrainWidth =
+    (if (RabTailOnlyBoost) RobCommitWidth else RabCommitWidth).U
 
   when(io.redirect.valid) {
     robWalkEndReg := false.B
@@ -216,8 +223,10 @@ class RenameBuffer(size: Int)(implicit p: Parameters) extends XSModule with HasC
   io.commits.isWalk := state === s_walk || state === s_special_walk
 
   for(i <- 0 until RabCommitWidth) {
-    io.commits.commitValid(i) := state === s_idle && i.U < commitSize || state === s_special_walk && i.U < specialWalkSize
-    io.commits.walkValid(i) := state === s_walk && i.U < walkSize || state === s_special_walk && i.U < specialWalkSize
+    io.commits.commitValid(i) := state === s_idle && i.U < commitSize ||
+      state === s_special_walk && i.U < specialWalkSize && i.U < specialWalkDrainWidth
+    io.commits.walkValid(i) := state === s_walk && i.U < walkSize && i.U < walkDrainWidth ||
+      state === s_special_walk && i.U < specialWalkSize && i.U < specialWalkDrainWidth
     // special walk use commitPtr
     io.commits.info(i) := Mux(state === s_idle || state === s_special_walk, commitCandidates(i).info, walkCandidates(i).info)
     io.commits.robIdx.foreach(_(i) := Mux(state === s_idle || state === s_special_walk, commitCandidates(i).robIdx.get, walkCandidates(i).robIdx.get))
@@ -225,9 +234,10 @@ class RenameBuffer(size: Int)(implicit p: Parameters) extends XSModule with HasC
 
   private val walkEndNext = walkSizeNxt === 0.U
   private val commitEndNext = commitSizeNxt === 0.U
-  private val specialWalkEndNext = specialWalkSize <= RabCommitWidth.U
-  // when robWalkEndReg is 1, walkSize donot increase and decrease RabCommitWidth per Cycle
-  private val walkEndNextCycle = (robWalkEndReg || io.fromRob.walkEnd && io.fromRob.walkSize === 0.U) && (walkSize <= RabCommitWidth.U)
+  private val specialWalkEndNext = specialWalkSize <= specialWalkDrainWidth
+  // Once the ROB walk ends, finish after the remaining RAB batch drains.
+  private val walkEndNextCycle =
+    (robWalkEndReg || io.fromRob.walkEnd && io.fromRob.walkSize === 0.U) && (walkSize <= walkDrainWidth)
   // change state
   state := stateNext
   when(io.redirect.valid) {
@@ -286,7 +296,10 @@ class RenameBuffer(size: Int)(implicit p: Parameters) extends XSModule with HasC
   // for difftest
   io.diffCommits.foreach(_ := 0.U.asTypeOf(new DiffCommitIO))
   io.diffCommits.foreach(_.isCommit := true.B)
-  for(i <- 0 until RabCommitWidth * MaxUopSize) {
+  // The difftest bundle mirrors architectural ROB commit bandwidth.  RAB walk
+  // bandwidth may be wider to accelerate recovery, but it does not increase
+  // the number of ROB entries that can commit in one cycle.
+  for(i <- 0 until CommitWidth * MaxUopSize) {
     io.diffCommits.foreach(_.commitValid(i) := i.U < newCommitSize)
     io.diffCommits.foreach(_.info(i) := renameBufferEntries((diffPtr + i.U).value).info)
   }

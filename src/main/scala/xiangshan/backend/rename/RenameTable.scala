@@ -251,10 +251,12 @@ class RenameTableWrapper(implicit p: Parameters) extends XSModule {
     val diff_vl_rat  = if (backendParams.basicDebugEn) Some(Vec(1,Output(UInt(PhyRegIdxWidth.W)))) else None
   })
 
-  val intRat = Module(new RenameTable(Reg_I, RabCommitWidth * MaxUopSize))
-  val fpRat  = Module(new RenameTable(Reg_F, RabCommitWidth * MaxUopSize))
-  val vecRat = Module(new RenameTable(Reg_V, RabCommitWidth * MaxUopSize))
-  val v0Rat  = Module(new RenameTable(Reg_V0, RabCommitWidth * MaxUopSize))
+  // Difftest observes architectural ROB commits, whose maximum width is
+  // independent of a wider RAB recovery walk.
+  val intRat = Module(new RenameTable(Reg_I, CommitWidth * MaxUopSize))
+  val fpRat  = Module(new RenameTable(Reg_F, CommitWidth * MaxUopSize))
+  val vecRat = Module(new RenameTable(Reg_V, CommitWidth * MaxUopSize))
+  val v0Rat  = Module(new RenameTable(Reg_V0, CommitWidth * MaxUopSize))
   val vlRat  = Module(new RenameTable(Reg_Vl, CommitWidth))
 
   io.debug_int_rat .foreach(_ := intRat.io.debug_rdata.get)

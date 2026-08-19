@@ -335,7 +335,7 @@ class VecExcpDataMergeModule(implicit p: Parameters) extends XSModule {
       when(sWaitRab_rabWriteOffset === 0.U) {
         // the first patch of RAB commit consider offset
         when(sWaitRab_vecExcpInfo.bits.isStride) {
-          (2 until RabCommitWidth).map { idx =>
+          (2 until math.min(RabCommitWidth, MaxLMUL + 2)).map { idx =>
             val vdIdx = idx - 2
             when(regWriteFromRabVec(idx).valid) {
               regMaps(vdIdx).lreg := regWriteFromRabVec(idx).bits.lreg
@@ -344,7 +344,7 @@ class VecExcpDataMergeModule(implicit p: Parameters) extends XSModule {
             }
           }
         }.otherwise {
-          (1 until RabCommitWidth).map { idx =>
+          (1 until math.min(RabCommitWidth, MaxLMUL + 1)).map { idx =>
             val vdIdx = idx - 1
             when(regWriteFromRabVec(idx).valid) {
               regMaps(vdIdx).lreg := regWriteFromRabVec(idx).bits.lreg
@@ -356,7 +356,7 @@ class VecExcpDataMergeModule(implicit p: Parameters) extends XSModule {
       }.otherwise {
         // the second patch of RAB/RAT commit need no offset
         when(sWaitRab_vecExcpInfo.bits.isStride) {
-          (0 until (MaxLMUL + 2 - RabCommitWidth)).map { idx =>
+          (0 until math.max(0, MaxLMUL + 2 - RabCommitWidth)).map { idx =>
             val vdIdx = idx - 2 + RabCommitWidth
             when(regWriteFromRabVec(idx).valid) {
               regMaps(vdIdx).lreg := regWriteFromRabVec(idx).bits.lreg
@@ -365,7 +365,7 @@ class VecExcpDataMergeModule(implicit p: Parameters) extends XSModule {
             }
           }
         }.otherwise {
-          (0 until MaxLMUL + 1 - RabCommitWidth).map { idx =>
+          (0 until math.max(0, MaxLMUL + 1 - RabCommitWidth)).map { idx =>
             val vdIdx = idx - 1 + RabCommitWidth
             when(regWriteFromRabVec(idx).valid) {
               regMaps(vdIdx).lreg := regWriteFromRabVec(idx).bits.lreg
@@ -379,7 +379,7 @@ class VecExcpDataMergeModule(implicit p: Parameters) extends XSModule {
       when (sWaitRab_ratWriteOffset === 0.U) {
         // the first patch of RAT commit consider offset
         when(sWaitRab_vecExcpInfo.bits.isStride) {
-          (2 until RabCommitWidth).map { idx =>
+          (2 until math.min(RabCommitWidth, MaxLMUL + 2)).map { idx =>
             val vdIdx = idx - 2
             when(regWriteFromRatVec(idx).valid) {
               regMaps(vdIdx).oldPreg := regWriteFromRatVec(idx).bits
@@ -387,7 +387,7 @@ class VecExcpDataMergeModule(implicit p: Parameters) extends XSModule {
             }
           }
         }.otherwise {
-          (1 until RabCommitWidth).map { idx =>
+          (1 until math.min(RabCommitWidth, MaxLMUL + 1)).map { idx =>
             val vdIdx = idx - 1
             when(regWriteFromRatVec(idx).valid) {
               regMaps(vdIdx).oldPreg := regWriteFromRatVec(idx).bits
@@ -398,7 +398,7 @@ class VecExcpDataMergeModule(implicit p: Parameters) extends XSModule {
       }.otherwise {
         // the second patch of RAT commit need no offset
         when(sWaitRab_vecExcpInfo.bits.isStride) {
-          (0 until (MaxLMUL + 2 - RabCommitWidth)).map { idx =>
+          (0 until math.max(0, MaxLMUL + 2 - RabCommitWidth)).map { idx =>
             val vdIdx = idx - 2 + RabCommitWidth
             when(regWriteFromRatVec(idx).valid) {
               regMaps(vdIdx).oldPreg := regWriteFromRatVec(idx).bits
@@ -406,7 +406,7 @@ class VecExcpDataMergeModule(implicit p: Parameters) extends XSModule {
             }
           }
         }.otherwise {
-          (0 until MaxLMUL + 1 - RabCommitWidth).map { idx =>
+          (0 until math.max(0, MaxLMUL + 1 - RabCommitWidth)).map { idx =>
             val vdIdx = idx - 1 + RabCommitWidth
             when(regWriteFromRatVec(idx).valid) {
               regMaps(vdIdx).oldPreg := regWriteFromRatVec(idx).bits
@@ -656,4 +656,3 @@ class HWRange(w: Int) extends Bundle {
 object HWRange {
   def apply(w: Int)(_from: Bits, _until: Bits): HWRange = Wire(new HWRange(w)).apply(_from, _until)
 }
-

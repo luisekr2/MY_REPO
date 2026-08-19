@@ -649,6 +649,282 @@ class RobCompressOnScShadowOnlyConfig(n: Int = 1) extends Config(
 }
 
 /**
+  * Reinvest ROB-compression capacity headroom in the branch predictor.
+  * The measured leader never fills its 352-entry ROB and averages about 50
+  * physical entries, so retain the exact grouping policy with 208 entries and
+  * double the TAGE capacity.  All tables use one set-index width in the current
+  * TAGE datapath and must therefore be resized together.
+  */
+class RobCompressOnScShadowRob208Tage2xConfig(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      val oldTage = core.frontendParameters.bpuParameters.tageParameters
+      val resizedTageTables = oldTage.TableInfos.map { info =>
+        new TageTableInfo(
+          Size = info.Size * 2,
+          NumWays = info.NumWays,
+          HistoryLength = info.HistoryLength
+        )
+      }
+      core.copy(
+        RobCompressEn = true,
+        RobSize = 208,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = oldTage.copy(
+              TableInfos = resizedTageTables,
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  private val bpu  = core.frontendParameters.bpuParameters
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowRob208Tage2xConfig " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} robSize=${core.RobSize} rabSize=${core.RabSize} " +
+    s"tageReadFree=${bpu.tageParameters.ReadFreeTraining} scReadFree=${bpu.scParameters.ReadFreeTraining} " +
+    s"tageTableSizes=${bpu.tageParameters.TableInfos.map(_.Size).mkString("[", ",", "]")} " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth}"
+  )
+}
+
+/**
+  * Reinvest ROB-compression capacity headroom in TAGE associativity while
+  * preserving every table's set count and folded-history index width.  This
+  * avoids the predictor remapping caused by Tage2x and only adds replacement
+  * choices inside each existing set.
+  */
+class RobCompressOnScShadowRob208Tage4WayConfig(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      val oldTage = core.frontendParameters.bpuParameters.tageParameters
+      val fourWayTageTables = oldTage.TableInfos.map { info =>
+        new TageTableInfo(
+          Size = info.Size * 2,
+          NumWays = info.NumWays * 2,
+          HistoryLength = info.HistoryLength
+        )
+      }
+      core.copy(
+        RobCompressEn = true,
+        RobSize = 208,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = oldTage.copy(
+              TableInfos = fourWayTageTables,
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  private val bpu  = core.frontendParameters.bpuParameters
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowRob208Tage4WayConfig " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} robSize=${core.RobSize} rabSize=${core.RabSize} " +
+    s"tageReadFree=${bpu.tageParameters.ReadFreeTraining} scReadFree=${bpu.scParameters.ReadFreeTraining} " +
+    s"tageTables=${bpu.tageParameters.TableInfos.map(info => s"${info.Size}x${info.NumWays}").mkString("[", ",", "]")} " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth}"
+  )
+}
+
+/**
+  * Spend ROB-compression capacity headroom on the rename-buffer recovery path.
+  * A compressed ROB entry can contribute several architectural destinations,
+  * so an eight-entry ROB walk can outrun the default eight-destination RAB
+  * walk.  Doubling only RabCommitWidth lets recovery drain those destinations
+  * without changing steady-state ROB commit width or branch prediction.
+  */
+class RobCompressOnScShadowRob208Rab16Config(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      core.copy(
+        RobCompressEn = true,
+        RobSize = 208,
+        RabCommitWidth = 16,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = core.frontendParameters.bpuParameters.tageParameters.copy(
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  private val bpu  = core.frontendParameters.bpuParameters
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowRob208Rab16Config " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} robSize=${core.RobSize} rabSize=${core.RabSize} " +
+    s"robCommitWidth=${core.RobCommitWidth} rabCommitWidth=${core.RabCommitWidth} " +
+    s"tageReadFree=${bpu.tageParameters.ReadFreeTraining} scReadFree=${bpu.scParameters.ReadFreeTraining} " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth}"
+  )
+}
+
+/**
+  * Widen RAB recovery without shrinking the physical ROB.  ROB208 experiments
+  * expose burst-capacity stalls even with low average occupancy, so this is
+  * the performance-oriented full-width recovery candidate.
+  */
+class RobCompressOnScShadowRab16Config(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      core.copy(
+        RobCompressEn = true,
+        RabCommitWidth = 16,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = core.frontendParameters.bpuParameters.tageParameters.copy(
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  private val bpu  = core.frontendParameters.bpuParameters
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowRab16Config " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} robSize=${core.RobSize} rabSize=${core.RabSize} " +
+    s"robCommitWidth=${core.RobCommitWidth} rabCommitWidth=${core.RabCommitWidth} " +
+    s"rabTailOnlyBoost=${core.RabTailOnlyBoost} " +
+    s"tageReadFree=${bpu.tageParameters.ReadFreeTraining} scReadFree=${bpu.scParameters.ReadFreeTraining} " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth}"
+  )
+}
+
+/**
+  * Preserve the baseline eight-wide recovery trajectory while the ROB is
+  * still walking, then use the wider RAB datapath only to drain the residual
+  * rename tail after ROB walk completion.
+  */
+class RobCompressOnScShadowRob208RabTail16Config(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      core.copy(
+        RobCompressEn = true,
+        RobSize = 208,
+        RabCommitWidth = 16,
+        RabTailOnlyBoost = true,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = core.frontendParameters.bpuParameters.tageParameters.copy(
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  private val bpu  = core.frontendParameters.bpuParameters
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowRob208RabTail16Config " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} robSize=${core.RobSize} rabSize=${core.RabSize} " +
+    s"robCommitWidth=${core.RobCommitWidth} rabCommitWidth=${core.RabCommitWidth} " +
+    s"rabTailOnlyBoost=${core.RabTailOnlyBoost} " +
+    s"tageReadFree=${bpu.tageParameters.ReadFreeTraining} scReadFree=${bpu.scParameters.ReadFreeTraining} " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth}"
+  )
+}
+
+/**
+  * Accelerate only the residual RAB recovery tail while retaining the
+  * baseline 352-entry ROB.  The smaller ROB208 candidates exhibit measurable
+  * full stalls, so capacity must not be traded away on the performance path.
+  */
+class RobCompressOnScShadowRabTail16Config(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      core.copy(
+        RobCompressEn = true,
+        RabCommitWidth = 16,
+        RabTailOnlyBoost = true,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = core.frontendParameters.bpuParameters.tageParameters.copy(
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  private val bpu  = core.frontendParameters.bpuParameters
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowRabTail16Config " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} robSize=${core.RobSize} rabSize=${core.RabSize} " +
+    s"robCommitWidth=${core.RobCommitWidth} rabCommitWidth=${core.RabCommitWidth} " +
+    s"rabTailOnlyBoost=${core.RabTailOnlyBoost} " +
+    s"tageReadFree=${bpu.tageParameters.ReadFreeTraining} scReadFree=${bpu.scParameters.ReadFreeTraining} " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth}"
+  )
+}
+
+/**
   * Retain twice as many recently drained SC rows in the write-buffer shadow.
   * ROB grouping and the predictor's SRAM geometry remain identical to the
   * SC-shadow leader; this only extends exact stale-snapshot repair coverage.

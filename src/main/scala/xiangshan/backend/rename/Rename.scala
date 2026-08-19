@@ -448,22 +448,18 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
     }.reduce(_ +& _)
   }
 
-  val walkNeedIntDest = WireDefault(VecInit(Seq.fill(RenameWidth)(false.B)))
-  val walkNeedFpDest = WireDefault(VecInit(Seq.fill(RenameWidth)(false.B)))
-  val walkNeedVecDest = WireDefault(VecInit(Seq.fill(RenameWidth)(false.B)))
-  val walkNeedV0Dest = WireDefault(VecInit(Seq.fill(RenameWidth)(false.B)))
-  val walkNeedVlDest = WireDefault(VecInit(Seq.fill(RenameWidth)(false.B)))
-  val walkIsMove = WireDefault(VecInit(Seq.fill(RenameWidth)(false.B)))
+  val walkNeedIntDest = WireDefault(VecInit(Seq.fill(RabCommitWidth)(false.B)))
+  val walkNeedFpDest = WireDefault(VecInit(Seq.fill(RabCommitWidth)(false.B)))
+  val walkNeedVecDest = WireDefault(VecInit(Seq.fill(RabCommitWidth)(false.B)))
+  val walkNeedV0Dest = WireDefault(VecInit(Seq.fill(RabCommitWidth)(false.B)))
+  val walkNeedVlDest = WireDefault(VecInit(Seq.fill(RabCommitWidth)(false.B)))
+  val walkIsMove = WireDefault(VecInit(Seq.fill(RabCommitWidth)(false.B)))
 
   val intSpecWen = Wire(Vec(RenameWidth, Bool()))
   val fpSpecWen  = Wire(Vec(RenameWidth, Bool()))
   val vecSpecWen = Wire(Vec(RenameWidth, Bool()))
   val v0SpecWen = Wire(Vec(RenameWidth, Bool()))
   val vlSpecWen = Wire(Vec(RenameWidth, Bool()))
-
-  val walkIntSpecWen = WireDefault(VecInit(Seq.fill(RenameWidth)(false.B)))
-
-  val walkPdest = Wire(Vec(RenameWidth, UInt(PhyRegIdxWidth.W)))
 
   val instrSize = Wire(Vec(RenameWidth, UInt((log2Ceil(RenameWidth + 1)).W)))
 
@@ -488,25 +484,11 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
     needVecDest(i) := io.in(i).valid && needDestReg(Reg_V, io.in(i).bits)
     needFpDest(i) := io.in(i).valid && needDestReg(Reg_F, io.in(i).bits)
     needIntDest(i) := io.in(i).valid && needDestReg(Reg_I, io.in(i).bits)
-    if (i < RabCommitWidth) {
-      walkNeedIntDest(i) := io.rabCommits.walkValid(i) && needDestRegWalk(Reg_I, io.rabCommits.info(i))
-      walkNeedFpDest(i) := io.rabCommits.walkValid(i) && needDestRegWalk(Reg_F, io.rabCommits.info(i))
-      walkNeedVecDest(i) := io.rabCommits.walkValid(i) && needDestRegWalk(Reg_V, io.rabCommits.info(i))
-      walkNeedV0Dest(i) := io.rabCommits.walkValid(i) && needDestRegWalk(Reg_V0, io.rabCommits.info(i))
-      // Need no vlwen here, since walkValid only assert when there are some vl regs needed to walk.
-      walkNeedVlDest(i) := io.vlCommits.walkValid(i)
-      walkIsMove(i) := io.rabCommits.info(i).isMove
-    }
     fpFreeList.io.allocateReq(i) := needFpDest(i)
-    fpFreeList.io.walkReq(i) := walkNeedFpDest(i)
     vecFreeList.io.allocateReq(i) := needVecDest(i)
-    vecFreeList.io.walkReq(i) := walkNeedVecDest(i)
     v0FreeList.io.allocateReq(i) := needV0Dest(i)
-    v0FreeList.io.walkReq(i) := walkNeedV0Dest(i)
     vlFreeList.io.allocateReq(i) := needVlDest(i)
-    vlFreeList.io.walkReq(i) := walkNeedVlDest(i)
     intFreeList.io.allocateReq(i) := needIntDest(i) && !isMove(i)
-    intFreeList.io.walkReq(i) := walkNeedIntDest(i) && !walkIsMove(i)
 
     // no valid instruction from decode stage || all resources (dispatch1 + both free lists) ready
     io.in(i).ready := !io.in(0).valid || canOut
@@ -627,12 +609,22 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
     vlSpecWen(i) := needVlDest(i) && vlFreeList.io.canAllocate && vlFreeList.io.doAllocate && !io.rabCommits.isWalk && !io.redirect.valid
 
 
-    if (i < RabCommitWidth) {
-      walkIntSpecWen(i) := walkNeedIntDest(i) && !io.redirect.valid
-      walkPdest(i) := io.rabCommits.info(i).pdest
-    } else {
-      walkPdest(i) := io.out(i).bits.pdest
-    }
+  }
+
+  for (i <- 0 until RabCommitWidth) {
+    walkNeedIntDest(i) := io.rabCommits.walkValid(i) && needDestRegWalk(Reg_I, io.rabCommits.info(i))
+    walkNeedFpDest(i) := io.rabCommits.walkValid(i) && needDestRegWalk(Reg_F, io.rabCommits.info(i))
+    walkNeedVecDest(i) := io.rabCommits.walkValid(i) && needDestRegWalk(Reg_V, io.rabCommits.info(i))
+    walkNeedV0Dest(i) := io.rabCommits.walkValid(i) && needDestRegWalk(Reg_V0, io.rabCommits.info(i))
+    // Need no vlwen here, since walkValid only asserts when a vl reg must be walked.
+    walkNeedVlDest(i) := io.vlCommits.walkValid(i)
+    walkIsMove(i) := io.rabCommits.info(i).isMove
+
+    fpFreeList.io.walkReq(i) := walkNeedFpDest(i)
+    vecFreeList.io.walkReq(i) := walkNeedVecDest(i)
+    v0FreeList.io.walkReq(i) := walkNeedV0Dest(i)
+    vlFreeList.io.walkReq(i) := walkNeedVlDest(i)
+    intFreeList.io.walkReq(i) := walkNeedIntDest(i) && !walkIsMove(i)
   }
 
   /**
@@ -850,11 +842,8 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
   /**
     * Instructions commit: update freelist and rename table
     */
-  for (i <- 0 until RabCommitWidth) {
-    val commitValid = io.rabCommits.isCommit && io.rabCommits.commitValid(i)
-    val walkValid = io.rabCommits.isWalk && io.rabCommits.walkValid(i)
-
-    // I. RAT Update
+  // I. Speculative RAT update follows the steady-state rename pipeline width.
+  for (i <- 0 until RenameWidth) {
     // When redirect happens (mis-prediction), don't update the rename table
     intRenamePorts(i).wen  := intSpecWen(i)
     intRenamePorts(i).addr := inVec(i).ldest(log2Ceil(IntLogicRegs) - 1, 0)
@@ -875,8 +864,13 @@ class Rename(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHe
     vlRenamePorts(i).wen := vlSpecWen(i)
     vlRenamePorts(i).addr := 0.U // only one vl reg
     vlRenamePorts(i).data := vlFreeList.io.allocatePhyReg(i)
+  }
 
-    // II. Free List Update
+  // II. Free-list commit and recovery update follows the independently
+  // configurable RAB drain width.
+  for (i <- 0 until RabCommitWidth) {
+    val commitValid = io.rabCommits.isCommit && io.rabCommits.commitValid(i)
+
     intFreeList.io.freeReq(i) := int_need_free(i)
     intFreeList.io.freePhyReg(i) := RegNext(int_old_pdest(i))
     fpFreeList.io.freeReq(i)  := GatedValidRegNext(commitValid && needDestRegCommit(Reg_F, io.rabCommits.info(i)))

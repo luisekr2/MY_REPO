@@ -155,6 +155,13 @@ class VTypeBuffer(size: Int)(implicit p: Parameters) extends XSModule with HasCi
 
   private val robWalkEndReg = RegInit(false.B)
   private val robWalkEnd = io.fromRob.walkEnd || robWalkEndReg
+  private val walkDrainWidth = if (RabTailOnlyBoost) {
+    Mux(robWalkEnd, RabCommitWidth.U, RobCommitWidth.U)
+  } else {
+    RabCommitWidth.U
+  }
+  private val specialWalkDrainWidth =
+    (if (RabTailOnlyBoost) RobCommitWidth else RabCommitWidth).U
 
   when(io.redirect.valid) {
     robWalkEndReg := false.B
@@ -266,8 +273,10 @@ class VTypeBuffer(size: Int)(implicit p: Parameters) extends XSModule with HasCi
 
 
   for (i <- 0 until RabCommitWidth) {
-    commitValidVec(i) := state === s_idle && i.U < commitSize || state === s_spcl_walk && i.U < spclWalkSize
-    walkValidVec(i) := state === s_walk && i.U < walkSize || state === s_spcl_walk && i.U < spclWalkSize
+    commitValidVec(i) := state === s_idle && i.U < commitSize ||
+      state === s_spcl_walk && i.U < spclWalkSize && i.U < specialWalkDrainWidth
+    walkValidVec(i) := state === s_walk && i.U < walkSize && i.U < walkDrainWidth ||
+      state === s_spcl_walk && i.U < spclWalkSize && i.U < specialWalkDrainWidth
 
     infoVec(i) := vtypeBufferReadDataVec(i).vtype
     hasVsetvlVec(i) := vtypeBufferReadDataVec(i).isVsetvl
@@ -350,14 +359,8 @@ class VTypeBuffer(size: Int)(implicit p: Parameters) extends XSModule with HasCi
   io.commits.isCommit := state === s_idle || state === s_spcl_walk
   io.commits.isWalk := state === s_walk || state === s_spcl_walk
   for (i <- 0 until RabCommitWidth) {
-    io.commits.commitValid(i) := Mux1H(Seq(
-      (state === s_idle) -> (i.U < commitSize),
-      (state === s_spcl_walk) -> (i.U < spclWalkSize),
-    ))
-    io.commits.walkValid(i) := Mux1H(Seq(
-      (state === s_walk) -> (i.U < walkSize),
-      (state === s_spcl_walk) -> (i.U < spclWalkSize),
-    ))
+    io.commits.commitValid(i) := commitValidVec(i)
+    io.commits.walkValid(i) := walkValidVec(i)
     io.commits.pdestVl(i) := pdestVlVec(i)
   }
 
@@ -419,7 +422,6 @@ class VTypeBuffer(size: Int)(implicit p: Parameters) extends XSModule with HasCi
   dontTouch(walkValidVec)
   dontTouch(infoVec)
 }
-
 
 
 

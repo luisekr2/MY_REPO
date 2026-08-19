@@ -360,6 +360,13 @@ overnight.sh
 /build-instr-snapshot/
 /build-snapshot8/
 /build-sc-shadow8/
+/build-rob208-tage2x/
+/build-rob208-tage4way/
+/build-rob208-rab16/
+/build-rob208-rabtail16/
+/build-rabtail16/
+/build-rab16/
+/.ccache-rob-compress/
 
 # VCS files
 simv
