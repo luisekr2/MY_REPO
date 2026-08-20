@@ -96,15 +96,47 @@ component correctness counters are sampled only on selected SC training cases,
 which are deliberately biased toward wrong or low-confidence predictions.
 The component and threshold defaults were restored.
 
+## Ahead-BTB write retention
+
+The complete leader run dropped 1,496 Ahead-BTB writes when its four-entry
+buffers filled, with 1,476 drops concentrated in bank 2.  Doubling every bank
+to eight entries was an isolated test: it left the ROB, SC, TAGE, table
+indexing, and training order unchanged and only retained requests that the
+`ValidIO` interface would otherwise discard.
+
+The candidate eliminated every drop, including the 12 drops visible at 50K,
+but did not improve execution.  The 10K, 50K, and complete runs reproduced the
+leader's instruction count, cycle count, IPC, and resolve/commit mispredict
+counters exactly.  The complete run changed Ahead-BTB hits/misses from
+166,106/40,379 to 166,068/40,417, showing that the retained writes were either
+redundant or mildly harmful.  The config was removed; aggregate Ahead-BTB bank
+metrics remain in `scripts/rob_compress_summary.py`.
+
+## TAGE associativity with the ROB-size confound removed
+
+The earlier four-way TAGE experiment was coupled to a 208-entry ROB.  At 50K
+it lost 0.846% IPC, but also incurred 1,861 ROB-full stall cycles that the
+352-entry leader did not have.  A new isolated config restores the 352-entry
+ROB and changes only each TAGE table from two to four ways while preserving its
+set count and history hash.
+
+This corrected experiment is the first follow-up to beat the leader at the
+complete gate: bzip2-derived improves from 232,470 to 231,680 cycles and from
+IPC 2.263780 to 2.271474 (+0.340%).  Resolve/commit mispredicts fall by 10/35.
+Both heat workloads remain exact cycle-level matches, for a three-workload IPC
+geometric mean of +0.113%.  Full methodology, cost, and limitations are in
+`docs/rob-compress-tage4way-352.md`.
+
 ## Final outcome
 
-Keep `RobCompressOnScShadowOnlyConfig` as the performance leader. The useful
-general result is that local latency, conflict, recovery, or predictor counters
-are insufficient promotion criteria for this design. ROB grouping and BPU
-feedback timing form a sensitive closed loop; even 18 rare group-boundary
-events can add 119 complete-run mispredictions. Future candidates should keep
-the complete-run gate and should be driven by prediction-accuracy evidence on
-an independent workload set rather than a short bzip2 phase alone.
+Promote the opt-in `RobCompressOnScShadowTage4WayConfig` as the measured
+performance leader while retaining `RobCompressOnScShadowOnlyConfig` as the
+lower-cost reference.  Local latency, conflict, recovery, or predictor
+counters remain insufficient promotion criteria for this design. ROB grouping
+and BPU feedback timing form a sensitive closed loop; even 18 rare
+group-boundary events can add 119 complete-run mispredictions. The successful
+candidate passed the complete bzip2 gate, two independent smoke workloads, and
+a repeated 50K run before promotion.
 
 The result logs are under:
 
@@ -114,6 +146,8 @@ The result logs are under:
 - `results/rob-compress-break-after-mul-tail3/`
 - `results/rob-compress-sc-lower-threshold/`
 - `results/rob-compress-sc-no-bias/`
+- `results/rob-compress-group-policy/abtb-wb8/`
+- `results/rob-compress-group-policy/tage4way-352/`
 
 Input SHA-256 for bzip2-derived:
 `e81c573cece062d8f315e4145a7f2a06a10a21c63ac2a109119eea7ecedbac97`.

@@ -14,6 +14,10 @@ FINAL_RE = re.compile(
     r"Core-0 instrCnt =\s*([0-9,]+), cycleCnt =\s*([0-9,]+), IPC =\s*([0-9.]+)"
 )
 PERF_RE = re.compile(r":\s+([A-Za-z0-9_]+),\s*([0-9]+)\s*$")
+ABTB_BANK_METRICS = (
+    "write_buffer_full",
+    "write_buffer_full_drop_write",
+)
 METRICS = (
     "branchMispredicts",
     "resolve_branch_mispredicts",
@@ -73,6 +77,15 @@ METRICS = (
     "waitRabWalkEnd",
     "disallow_enq_cycle",
     "commitQueueFull",
+    "stall_cycle_rob",
+    "TAGEMissBubble",
+    "ControlRedirectStall",
+    "FrontendOtherCoreStall",
+    "abtb_write_buffer_full",
+    "abtb_write_buffer_full_drop_write",
+    "predict_hit",
+    "predict_miss",
+    "total_write",
     *(f"commitCompressCnt{size}" for size in range(1, 9)),
     *(f"waitNotWritebackedCompressSize{size}" for size in range(1, 9)),
 )
@@ -105,10 +118,17 @@ def parse_log(label: str, path: Path) -> dict[str, str | int]:
     }
 
     counters: dict[str, str] = {}
+    abtb_bank_sums = {metric: 0 for metric in ABTB_BANK_METRICS}
     for line in text.splitlines():
         match = PERF_RE.search(line)
         if match:
-            counters[match.group(1)] = match.group(2)
+            metric, value = match.groups()
+            counters[metric] = value
+            if ".bpu.abtb.banks_" in line and metric in abtb_bank_sums:
+                abtb_bank_sums[metric] += int(value)
+    counters.update(
+        {f"abtb_{metric}": str(value) for metric, value in abtb_bank_sums.items()}
+    )
     for metric in METRICS:
         row[metric] = counters.get(metric, "")
     return row

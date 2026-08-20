@@ -380,6 +380,8 @@ overnight.sh
 /build-break-after-mul-tail3/
 /build-sc-lower-threshold/
 /build-sc-no-bias/
+/build-abtb-wb8/
+/build-tage4way-352/
 /.ccache-rob-compress/
 
 # VCS files

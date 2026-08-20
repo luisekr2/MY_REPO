@@ -649,6 +649,56 @@ class RobCompressOnScShadowOnlyConfig(n: Int = 1) extends Config(
 }
 
 /**
+  * Isolate the set-mapping-preserving TAGE associativity experiment from the
+  * undersized ROB used by the earlier resource-trade study.  ROB compression
+  * and the SC-shadow policy stay identical to the leader; each TAGE table keeps
+  * its set count and history hash while gaining two replacement choices.
+  */
+class RobCompressOnScShadowTage4WayConfig(n: Int = 1) extends Config(
+  new DefaultConfig(n).alter((site, here, up) => {
+    case XSTileKey => up(XSTileKey).map { core =>
+      val oldTage = core.frontendParameters.bpuParameters.tageParameters
+      val fourWayTageTables = oldTage.TableInfos.map { info =>
+        new TageTableInfo(
+          Size = info.Size * 2,
+          NumWays = info.NumWays * 2,
+          HistoryLength = info.HistoryLength
+        )
+      }
+      core.copy(
+        RobCompressEn = true,
+        frontendParameters = core.frontendParameters.copy(
+          bpuParameters = core.frontendParameters.bpuParameters.copy(
+            tageParameters = oldTage.copy(
+              TableInfos = fourWayTageTables,
+              ReadFreeTraining = false
+            ),
+            scParameters = core.frontendParameters.bpuParameters.scParameters.copy(
+              ReadFreeTraining = true
+            )
+          )
+        )
+      )
+    }
+  })
+) {
+  private val core = this(XSTileKey).head
+  private val tage = core.frontendParameters.bpuParameters.tageParameters
+  Console.println(
+    s"[ROB-COMPRESS-EXPERIMENT] config=RobCompressOnScShadowTage4WayConfig " +
+    s"git=${sys.env.getOrElse("XIANGSHAN_GIT_SHA", "not-set")} " +
+    s"robCompressEn=${core.backendParams.robCompressEn} tageReadFree=false scReadFree=true " +
+    s"tageTableSizes=${tage.TableInfos.map(_.Size).mkString("[", ",", "]")} " +
+    s"tageTableWays=${tage.TableInfos.map(_.NumWays).mkString("[", ",", "]")} " +
+    s"maxGroupSize=${core.backendParams.robCompressMaxGroupSize} " +
+    s"acrossFtq=${core.backendParams.robCompressAcrossFtq} " +
+    s"longLatency=${core.backendParams.robCompressLongLatency} " +
+    s"fusionEn=${core.backendParams.fusionEn} decodeWidth=${core.DecodeWidth} " +
+    s"renameWidth=${core.RenameWidth} commitWidth=${core.RobCommitWidth} robSize=${core.RobSize}"
+  )
+}
+
+/**
   * Reinvest ROB-compression capacity headroom in the branch predictor.
   * The measured leader never fills its 352-entry ROB and averages about 50
   * physical entries, so retain the exact grouping policy with 208 entries and
