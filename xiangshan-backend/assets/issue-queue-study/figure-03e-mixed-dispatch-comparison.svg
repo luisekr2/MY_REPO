@@ -1,0 +1,234 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1320" viewBox="0 0 1240 1320"><defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#b45422"/></marker></defs><style>text{font-family:'Malgun Gothic',Arial,sans-serif;fill:#172c41}.title{font-size:25px;font-weight:700}.head{font-size:21px;font-weight:700}.body{font-size:19px}.small{font-size:17px}.number{font-size:23px;font-weight:700}</style><rect width="1240" height="1320" fill="white"/>
+<text x="30" y="42" class="title">ALU·BJU 혼합: 같은 두 enqueue 입구를 함께 사용한다</text>
+<text x="30" y="73" class="small">아래 세 경우는 같은 후보 목록과 수용 조건을 사용한다. 한 선택 상태의 설명용 계산이며 실제 파형이 아니다.</text>
+<rect x="30" y="94" width="1180" height="112" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="48" y="124" class="head">ALU 후보 순서: [IQ0, IQ4, IQ2, IQ1, IQ5, IQ3]     BJU 후보 순서: [IQ0, IQ2, IQ1]</text>
+<text x="48" y="155" class="body">가정: 각 IQ enqueue 입구 2개 · 모두 ready · ROB 등 나머지 gate 통과</text>
+<text x="48" y="184" class="small">그룹별 순번으로 목적지 선택 → IQ별 누적 요청 수 검사 → 첫 차단 지점부터 뒤쪽 lane 대기</text>
+<rect x="30" y="230" width="1180" height="300" rx="8" fill="#f4f7fa" stroke="#a7b9ca"/>
+<text x="48" y="264" class="head">A · ALU 5개 + BJU 3개</text>
+<rect x="974" y="242" width="217" height="36" rx="8" fill="#e1f3e8" stroke="#a7b9ca"/>
+<text x="987" y="267" class="body">8개 수용 / 0개 대기</text>
+<text x="48" y="315" class="small">입력 lane</text>
+<text x="48" y="350" class="small">명령 종류</text>
+<text x="48" y="380" class="small">선택 IQ</text>
+<text x="48" y="424" class="small">IQ0 누적</text>
+<text x="48" y="465" class="small">enqueue</text>
+<rect x="161" y="286" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="176" y="313" class="body">lane 0</text>
+<text x="192" y="347" class="head">ALU</text>
+<text x="192" y="378" class="head">IQ0</text>
+<rect x="161" y="399" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="211" y="424" class="number">1</text>
+<rect x="161" y="443" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="173" y="467" class="small">수용</text>
+<rect x="290" y="286" width="115" height="104" rx="8" fill="#fff2e2" stroke="#a7b9ca"/>
+<text x="305" y="313" class="body">lane 1</text>
+<text x="321" y="347" class="head">BJU</text>
+<text x="321" y="378" class="head">IQ0</text>
+<rect x="290" y="399" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="340" y="424" class="number">2</text>
+<rect x="290" y="443" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="302" y="467" class="small">수용</text>
+<rect x="419" y="286" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="434" y="313" class="body">lane 2</text>
+<text x="450" y="347" class="head">ALU</text>
+<text x="450" y="378" class="head">IQ4</text>
+<rect x="419" y="399" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="469" y="424" class="number">2</text>
+<rect x="419" y="443" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="431" y="467" class="small">수용</text>
+<rect x="548" y="286" width="115" height="104" rx="8" fill="#fff2e2" stroke="#a7b9ca"/>
+<text x="563" y="313" class="body">lane 3</text>
+<text x="579" y="347" class="head">BJU</text>
+<text x="579" y="378" class="head">IQ2</text>
+<rect x="548" y="399" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="598" y="424" class="number">2</text>
+<rect x="548" y="443" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="560" y="467" class="small">수용</text>
+<rect x="677" y="286" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="692" y="313" class="body">lane 4</text>
+<text x="708" y="347" class="head">ALU</text>
+<text x="708" y="378" class="head">IQ2</text>
+<rect x="677" y="399" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="727" y="424" class="number">2</text>
+<rect x="677" y="443" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="689" y="467" class="small">수용</text>
+<rect x="806" y="286" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="821" y="313" class="body">lane 5</text>
+<text x="837" y="347" class="head">ALU</text>
+<text x="837" y="378" class="head">IQ1</text>
+<rect x="806" y="399" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="856" y="424" class="number">2</text>
+<rect x="806" y="443" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="818" y="467" class="small">수용</text>
+<rect x="935" y="286" width="115" height="104" rx="8" fill="#fff2e2" stroke="#a7b9ca"/>
+<text x="950" y="313" class="body">lane 6</text>
+<text x="966" y="347" class="head">BJU</text>
+<text x="966" y="378" class="head">IQ1</text>
+<rect x="935" y="399" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="985" y="424" class="number">2</text>
+<rect x="935" y="443" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="947" y="467" class="small">수용</text>
+<rect x="1064" y="286" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="1079" y="313" class="body">lane 7</text>
+<text x="1095" y="347" class="head">ALU</text>
+<text x="1095" y="378" class="head">IQ5</text>
+<rect x="1064" y="399" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="1114" y="424" class="number">2</text>
+<rect x="1064" y="443" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="1076" y="467" class="small">수용</text>
+<text x="48" y="507" class="small">IQ0·IQ1·IQ2는 각각 2개, IQ4·IQ5는 각각 1개 → 모든 IQ의 두 입구 안에 들어간다.</text>
+<rect x="30" y="550" width="1180" height="300" rx="8" fill="#f4f7fa" stroke="#a7b9ca"/>
+<text x="48" y="584" class="head">B · ALU 4개 + BJU 4개 · 번갈아 배치</text>
+<rect x="974" y="562" width="217" height="36" rx="8" fill="#fff0d9" stroke="#a7b9ca"/>
+<text x="987" y="587" class="body">7개 수용 / 1개 대기</text>
+<text x="48" y="635" class="small">입력 lane</text>
+<text x="48" y="670" class="small">명령 종류</text>
+<text x="48" y="700" class="small">선택 IQ</text>
+<text x="48" y="744" class="small">IQ0 누적</text>
+<text x="48" y="785" class="small">enqueue</text>
+<rect x="161" y="606" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="176" y="633" class="body">lane 0</text>
+<text x="192" y="667" class="head">ALU</text>
+<text x="192" y="698" class="head">IQ0</text>
+<rect x="161" y="719" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="211" y="744" class="number">1</text>
+<rect x="161" y="763" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="173" y="787" class="small">수용</text>
+<rect x="290" y="606" width="115" height="104" rx="8" fill="#fff2e2" stroke="#a7b9ca"/>
+<text x="305" y="633" class="body">lane 1</text>
+<text x="321" y="667" class="head">BJU</text>
+<text x="321" y="698" class="head">IQ0</text>
+<rect x="290" y="719" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="340" y="744" class="number">2</text>
+<rect x="290" y="763" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="302" y="787" class="small">수용</text>
+<rect x="419" y="606" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="434" y="633" class="body">lane 2</text>
+<text x="450" y="667" class="head">ALU</text>
+<text x="450" y="698" class="head">IQ4</text>
+<rect x="419" y="719" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="469" y="744" class="number">2</text>
+<rect x="419" y="763" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="431" y="787" class="small">수용</text>
+<rect x="548" y="606" width="115" height="104" rx="8" fill="#fff2e2" stroke="#a7b9ca"/>
+<text x="563" y="633" class="body">lane 3</text>
+<text x="579" y="667" class="head">BJU</text>
+<text x="579" y="698" class="head">IQ2</text>
+<rect x="548" y="719" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="598" y="744" class="number">2</text>
+<rect x="548" y="763" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="560" y="787" class="small">수용</text>
+<rect x="677" y="606" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="692" y="633" class="body">lane 4</text>
+<text x="708" y="667" class="head">ALU</text>
+<text x="708" y="698" class="head">IQ2</text>
+<rect x="677" y="719" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="727" y="744" class="number">2</text>
+<rect x="677" y="763" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="689" y="787" class="small">수용</text>
+<rect x="806" y="606" width="115" height="104" rx="8" fill="#fff2e2" stroke="#a7b9ca"/>
+<text x="821" y="633" class="body">lane 5</text>
+<text x="837" y="667" class="head">BJU</text>
+<text x="837" y="698" class="head">IQ1</text>
+<rect x="806" y="719" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="856" y="744" class="number">2</text>
+<rect x="806" y="763" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="818" y="787" class="small">수용</text>
+<rect x="935" y="606" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="950" y="633" class="body">lane 6</text>
+<text x="966" y="667" class="head">ALU</text>
+<text x="966" y="698" class="head">IQ1</text>
+<rect x="935" y="719" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="985" y="744" class="number">2</text>
+<rect x="935" y="763" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="947" y="787" class="small">수용</text>
+<rect x="1064" y="606" width="115" height="104" rx="8" fill="#fff2e2" stroke="#a7b9ca"/>
+<text x="1079" y="633" class="body">lane 7</text>
+<text x="1095" y="667" class="head">BJU</text>
+<text x="1095" y="698" class="head">IQ0</text>
+<rect x="1064" y="719" width="115" height="34" rx="8" fill="#ffe0dc" stroke="#a7b9ca"/>
+<text x="1114" y="744" class="number">3</text>
+<rect x="1064" y="763" width="115" height="34" rx="8" fill="#ffe0dc" stroke="#a7b9ca"/>
+<text x="1076" y="787" class="small">입구 초과</text>
+<text x="48" y="827" class="small">IQ0 입구 0은 lane 0의 ALU, 입구 1은 lane 1의 BJU → lane 7의 BJU는 세 번째 요청.</text>
+<rect x="30" y="870" width="1180" height="300" rx="8" fill="#f4f7fa" stroke="#a7b9ca"/>
+<text x="48" y="904" class="head">C · 같은 ALU 4개 + BJU 4개 · BJU를 앞에 배치</text>
+<rect x="974" y="882" width="217" height="36" rx="8" fill="#fff0d9" stroke="#a7b9ca"/>
+<text x="987" y="907" class="body">4개 수용 / 4개 대기</text>
+<text x="48" y="955" class="small">입력 lane</text>
+<text x="48" y="990" class="small">명령 종류</text>
+<text x="48" y="1020" class="small">선택 IQ</text>
+<text x="48" y="1064" class="small">IQ0 누적</text>
+<text x="48" y="1105" class="small">enqueue</text>
+<rect x="161" y="926" width="115" height="104" rx="8" fill="#fff2e2" stroke="#a7b9ca"/>
+<text x="176" y="953" class="body">lane 0</text>
+<text x="192" y="987" class="head">BJU</text>
+<text x="192" y="1018" class="head">IQ0</text>
+<rect x="161" y="1039" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="211" y="1064" class="number">1</text>
+<rect x="161" y="1083" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="173" y="1107" class="small">수용</text>
+<rect x="290" y="926" width="115" height="104" rx="8" fill="#fff2e2" stroke="#a7b9ca"/>
+<text x="305" y="953" class="body">lane 1</text>
+<text x="321" y="987" class="head">BJU</text>
+<text x="321" y="1018" class="head">IQ2</text>
+<rect x="290" y="1039" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="340" y="1064" class="number">1</text>
+<rect x="290" y="1083" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="302" y="1107" class="small">수용</text>
+<rect x="419" y="926" width="115" height="104" rx="8" fill="#fff2e2" stroke="#a7b9ca"/>
+<text x="434" y="953" class="body">lane 2</text>
+<text x="450" y="987" class="head">BJU</text>
+<text x="450" y="1018" class="head">IQ1</text>
+<rect x="419" y="1039" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="469" y="1064" class="number">1</text>
+<rect x="419" y="1083" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="431" y="1107" class="small">수용</text>
+<rect x="548" y="926" width="115" height="104" rx="8" fill="#fff2e2" stroke="#a7b9ca"/>
+<text x="563" y="953" class="body">lane 3</text>
+<text x="579" y="987" class="head">BJU</text>
+<text x="579" y="1018" class="head">IQ0</text>
+<rect x="548" y="1039" width="115" height="34" rx="8" fill="#fff" stroke="#a7b9ca"/>
+<text x="598" y="1064" class="number">2</text>
+<rect x="548" y="1083" width="115" height="34" rx="8" fill="#e5f3ec" stroke="#a7b9ca"/>
+<text x="560" y="1107" class="small">수용</text>
+<rect x="677" y="926" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="692" y="953" class="body">lane 4</text>
+<text x="708" y="987" class="head">ALU</text>
+<text x="708" y="1018" class="head">IQ0</text>
+<rect x="677" y="1039" width="115" height="34" rx="8" fill="#ffe0dc" stroke="#a7b9ca"/>
+<text x="727" y="1064" class="number">3</text>
+<rect x="677" y="1083" width="115" height="34" rx="8" fill="#ffe0dc" stroke="#a7b9ca"/>
+<text x="689" y="1107" class="small">입구 초과</text>
+<rect x="806" y="926" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="821" y="953" class="body">lane 5</text>
+<text x="837" y="987" class="head">ALU</text>
+<text x="837" y="1018" class="head">IQ4</text>
+<rect x="806" y="1039" width="115" height="34" rx="8" fill="#ffe0dc" stroke="#a7b9ca"/>
+<text x="856" y="1064" class="number">3</text>
+<rect x="806" y="1083" width="115" height="34" rx="8" fill="#fff0d9" stroke="#a7b9ca"/>
+<text x="818" y="1107" class="small">앞선 차단</text>
+<rect x="935" y="926" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="950" y="953" class="body">lane 6</text>
+<text x="966" y="987" class="head">ALU</text>
+<text x="966" y="1018" class="head">IQ2</text>
+<rect x="935" y="1039" width="115" height="34" rx="8" fill="#ffe0dc" stroke="#a7b9ca"/>
+<text x="985" y="1064" class="number">3</text>
+<rect x="935" y="1083" width="115" height="34" rx="8" fill="#fff0d9" stroke="#a7b9ca"/>
+<text x="947" y="1107" class="small">앞선 차단</text>
+<rect x="1064" y="926" width="115" height="104" rx="8" fill="#eaf2ff" stroke="#a7b9ca"/>
+<text x="1079" y="953" class="body">lane 7</text>
+<text x="1095" y="987" class="head">ALU</text>
+<text x="1095" y="1018" class="head">IQ1</text>
+<rect x="1064" y="1039" width="115" height="34" rx="8" fill="#ffe0dc" stroke="#a7b9ca"/>
+<text x="1114" y="1064" class="number">3</text>
+<rect x="1064" y="1083" width="115" height="34" rx="8" fill="#fff0d9" stroke="#a7b9ca"/>
+<text x="1076" y="1107" class="small">앞선 차단</text>
+<text x="48" y="1147" class="small">IQ0 입구는 lane 0·3의 BJU가 사용 → lane 4의 ALU에서 처음 막히고 뒤쪽도 대기한다.</text>
+<path d="M692 1125 H1162" fill="none" stroke="#b45422" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="30" y="1200" width="1180" height="89" rx="8" fill="#fff4de" stroke="#a7b9ca"/>
+<text x="48" y="1230" class="head">B와 C는 IQ별 총 요청 수가 같다. 하지만 첫 충돌이 lane 7 / lane 4라서 수용량이 7개 / 4개다.</text>
+<text x="48" y="1264" class="small">C의 lane 5는 IQ4가 여유 있어도 막힌다. IQ0의 누적 요청 3개가 뒤쪽 lane의 차단 조건에도 남기 때문이다.</text>
+<text x="30" y="1310" class="small">기준 f85a1f7 · 입구 수: Parameters.scala:345–367 · 누적 요청과 차단: Dispatch.scala:580–648</text></svg>

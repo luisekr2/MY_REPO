@@ -184,6 +184,40 @@ IQ4·IQ0에 두 개씩 enqueue되어도 각 ALU 출력의 issue 폭은 하나다
 
 입구 수와 ALU·BJU의 공유 구성은 Parameters.scala:345–367, 후보 배정은 Dispatch.scala:446–579, 누적 요청과 차단은 Dispatch.scala:580–648을 기준으로 했다. 상세 소스는 뒤의 참고 C에 모았다.
 
+### ALU와 BJU가 섞이면 무엇이 달라질까?
+
+![ALU BJU 혼합 세 경우의 lane별 목적지, IQ0 누적 요청과 enqueue 차단 비교](assets/issue-queue-study/figure-03e-mixed-dispatch-comparison.png)
+
+**예제 그림 — ALU·BJU 혼합 비교.** 세 경우 모두 같은 설명용 후보 목록을 사용한다. ALU는 `[IQ0, IQ4, IQ2, IQ1, IQ5, IQ3]`, BJU는 `[IQ0, IQ2, IQ1]`이다. 각 IQ의 enqueue 입구는 2개이며 모두 ready, ROB 등 다른 gate도 통과한다고 가정한다. 각 행은 별개의 입력 묶음 사례이며 연속 사이클 파형이 아니다.
+
+[SVG 원본](assets/issue-queue-study/figure-03e-mixed-dispatch-comparison.svg)
+
+**그림 읽는 방법**
+
+각 lane 칸의 위쪽은 명령 종류와 선택 IQ, 가운데는 그 lane까지의 **IQ0 누적 요청 수**, 아래쪽은 실제 수용 여부다. 파란 명령 칸은 ALU, 연한 주황 명령 칸은 BJU다. 결과 칸의 초록은 수용, 빨강은 처음 입구 수를 넘은 지점, 노랑은 앞선 요청이 막혀 함께 대기하는 lane이다. IQ0 수만 강조했지만 실제 회로는 모든 직접 목적지 IQ의 누적 수를 검사한다.
+
+**A — ALU 5개 + BJU 3개: 8개 수용**
+
+목적지는 `[IQ0, IQ0, IQ4, IQ2, IQ2, IQ1, IQ1, IQ5]`다. IQ0·IQ1·IQ2에 두 개씩, IQ4·IQ5에 하나씩 간다. 어느 IQ도 입구 2개를 초과하지 않아 8개 모두 같은 사이클에 enqueue할 수 있다. 공유 IQ의 두 입구는 ALU 하나와 BJU 하나를 함께 받는다.
+
+**B — ALU 4개 + BJU 4개, 번갈아 배치: 7개 수용**
+
+목적지는 `[IQ0, IQ0, IQ4, IQ2, IQ2, IQ1, IQ1, IQ0]`다. IQ0 입구 0에 lane 0의 ALU, 입구 1에 lane 1의 BJU가 연결된다. lane 7의 네 번째 BJU는 후보 목록을 한 바퀴 돌아 IQ0를 선택한다. 그때 IQ0 누적 요청이 3이므로 lane 7만 대기한다.
+
+**C — 같은 ALU 4개 + BJU 4개, BJU를 앞에 배치: 4개 수용**
+
+목적지는 `[IQ0, IQ2, IQ1, IQ0, IQ0, IQ4, IQ2, IQ1]`다. IQ0의 두 입구를 lane 0·3의 BJU가 사용한다. lane 4의 첫 ALU도 자기 후보 목록의 첫 IQ0를 선택하므로 세 번째 요청이 되어 막힌다. lane 5–7의 목적지 자체에는 입구가 남아 있어도, 그 위치까지의 IQ0 누적 요청이 계속 3이므로 함께 막힌다. 그림의 화살표는 이 차단 범위를 나타낸다.
+
+| 경우 | IQ0 / IQ1 / IQ2 / IQ3 / IQ4 / IQ5 총 요청 수 | 처음 차단되는 lane | 실제 enqueue |
+| --- | --- | --- | --- |
+| A: 5 ALU + 3 BJU | 2 / 2 / 2 / 0 / 1 / 1 | 없음 | 8개 |
+| B: 4 ALU + 4 BJU, 교차 | 3 / 2 / 2 / 0 / 1 / 0 | lane 7 | 7개 |
+| C: 4 ALU + 4 BJU, BJU 먼저 | 3 / 2 / 2 / 0 / 1 / 0 | lane 4 | 4개 |
+
+**핵심 결론:** ALU·BJU는 후보 목록과 그룹 내 순번을 따로 사용하지만, 같은 IQ를 선택한 뒤에는 enqueue 입구를 공유한다. 전체 IQ의 남은 공간만으로 진행량을 계산할 수 없다. **목적지의 겹침과 입력 순서상 첫 차단 위치**가 함께 중요하다. 이 수치는 위 후보 순서와 조건을 고정한 구조 계산이며 일반적인 평균 처리량·IPC 측정값이 아니다.
+
+소스 대응: Dispatch.scala:515–579의 그룹별 순번·목적지 선택, 580–585의 IQ별 누적 PopCount, 594–596의 ready/valid 조건, 641–648의 IQ별 차단 OR. 각 IQ의 두 enqueue 입구와 ALU·BJU 공유 구성은 Parameters.scala:345–367을 따른다.
+
 ### Dispatch 내부 논리로 보면 어떻게 연결될까?
 
 그림 3의 분배를 실제 비교기·PopCount·MUX·레지스터로 펼치면 아래 두 단계가 된다. **목적지 선택과 해당 목적지의 수용 판정은 별도 경로**다. 이 그림은 기준 커밋의 현재 구현이며, IQ를 분할한 변경안은 아니다.
