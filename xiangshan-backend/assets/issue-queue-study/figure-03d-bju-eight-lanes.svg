@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1120" viewBox="0 0 1200 1120"><defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#52687b"/></marker></defs><style>text{font-family:'Malgun Gothic',Arial,sans-serif;fill:#172c41}.title{font-size:26px;font-weight:700}.head{font-size:21px;font-weight:700}.body{font-size:19px}.small{font-size:17px}</style><rect width="1200" height="1120" fill="white"/>
+<text x="30" y="42" class="title">8개 BJU 명령 → 3개 후보 IQ → 6개 enqueue, 2개 대기</text>
+<text x="30" y="75" class="small">Dispatch 입력에 BJU 8개가 있다고 가정한 구조 설명 · 실제 프런트엔드 공급률·측정 파형을 뜻하지 않음</text>
+<text x="30" y="117" class="head">① 이번 묶음의 8개 lane · 목적지 선택은 동시에 계산</text>
+<rect x="30" y="137" width="132" height="98" rx="9" fill="#eaf2ff" stroke="#a4b6c6"/>
+<text x="43" y="166" class="head">lane 0</text>
+<text x="43" y="194" class="small">BJU 순번 0</text>
+<text x="43" y="222" class="body">→ IQ0</text>
+<rect x="174" y="137" width="132" height="98" rx="9" fill="#eaf2ff" stroke="#a4b6c6"/>
+<text x="187" y="166" class="head">lane 1</text>
+<text x="187" y="194" class="small">BJU 순번 1</text>
+<text x="187" y="222" class="body">→ IQ2</text>
+<rect x="318" y="137" width="132" height="98" rx="9" fill="#eaf2ff" stroke="#a4b6c6"/>
+<text x="331" y="166" class="head">lane 2</text>
+<text x="331" y="194" class="small">BJU 순번 2</text>
+<text x="331" y="222" class="body">→ IQ1</text>
+<rect x="462" y="137" width="132" height="98" rx="9" fill="#eaf2ff" stroke="#a4b6c6"/>
+<text x="475" y="166" class="head">lane 3</text>
+<text x="475" y="194" class="small">BJU 순번 3</text>
+<text x="475" y="222" class="body">→ IQ0</text>
+<rect x="606" y="137" width="132" height="98" rx="9" fill="#eaf2ff" stroke="#a4b6c6"/>
+<text x="619" y="166" class="head">lane 4</text>
+<text x="619" y="194" class="small">BJU 순번 4</text>
+<text x="619" y="222" class="body">→ IQ2</text>
+<rect x="750" y="137" width="132" height="98" rx="9" fill="#eaf2ff" stroke="#a4b6c6"/>
+<text x="763" y="166" class="head">lane 5</text>
+<text x="763" y="194" class="small">BJU 순번 5</text>
+<text x="763" y="222" class="body">→ IQ1</text>
+<rect x="894" y="137" width="132" height="98" rx="9" fill="#fff0df" stroke="#a4b6c6"/>
+<text x="907" y="166" class="head">lane 6</text>
+<text x="907" y="194" class="small">BJU 순번 6</text>
+<text x="907" y="222" class="body">→ IQ0</text>
+<rect x="1038" y="137" width="132" height="98" rx="9" fill="#fff0df" stroke="#a4b6c6"/>
+<text x="1051" y="166" class="head">lane 7</text>
+<text x="1051" y="194" class="small">BJU 순번 7</text>
+<text x="1051" y="222" class="body">→ IQ2</text>
+<rect x="30" y="260" width="1140" height="90" rx="9" fill="#eaf2ff" stroke="#a4b6c6"/>
+<text x="48" y="290" class="head">공통 BJU 후보 목록: [ IQ0, IQ2, IQ1 ]  ← 설명용 순서</text>
+<text x="48" y="322" class="body">목록 위치 = BJU 그룹 내 순번 % 3     →     0, 1, 2, 0, 1, 2, 0, 1</text>
+<path d="M600 350 L600 380" fill="none" stroke="#52687b" stroke-width="2" marker-end="url(#arr)"/>
+<text x="30" y="411" class="head">② 선택한 IQ별로 모아 보기 · 각 IQ의 앞 두 요청은 동시에 enqueue</text>
+<rect x="30" y="435" width="364" height="360" rx="9" fill="#f1f5f9" stroke="#a4b6c6"/>
+<text x="48" y="467" class="head">IQ0 · enqueue 입구 2개</text>
+<rect x="46" y="489" width="140" height="53" rx="9" fill="#e5f4ec" stroke="#a4b6c6"/>
+<text x="58" y="512" class="body">lane 0</text>
+<text x="58" y="533" class="small">누적 1개</text>
+<path d="M190 515 L218 515" fill="none" stroke="#52687b" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="224" y="489" width="153" height="53" rx="9" fill="#e5f4ec" stroke="#a4b6c6"/>
+<text x="236" y="522" class="small">입구 0 → 수용</text>
+<rect x="46" y="559" width="140" height="53" rx="9" fill="#e5f4ec" stroke="#a4b6c6"/>
+<text x="58" y="582" class="body">lane 3</text>
+<text x="58" y="603" class="small">누적 2개</text>
+<path d="M190 585 L218 585" fill="none" stroke="#52687b" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="224" y="559" width="153" height="53" rx="9" fill="#e5f4ec" stroke="#a4b6c6"/>
+<text x="236" y="592" class="small">입구 1 → 수용</text>
+<rect x="46" y="629" width="140" height="53" rx="9" fill="#ffe7dc" stroke="#a4b6c6"/>
+<text x="58" y="652" class="body">lane 6</text>
+<text x="58" y="673" class="small">누적 3개</text>
+<path d="M190 655 L218 655" fill="none" stroke="#52687b" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="224" y="629" width="153" height="53" rx="9" fill="#ffe7dc" stroke="#a4b6c6"/>
+<text x="236" y="662" class="small">입구 없음 → 대기</text>
+<text x="48" y="733" class="small">※ 누적 수는 이번 묶음의 요청 수</text>
+<text x="48" y="764" class="small">이미 IQ에 저장된 개수가 아님</text>
+<path d="M212 795 L212 825" fill="none" stroke="#52687b" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="46" y="837" width="332" height="62" rx="9" fill="#eaf2ff" stroke="#a4b6c6"/>
+<text x="62" y="864" class="head">BJU0로 issue</text>
+<text x="62" y="887" class="small">준비·선택 조건 충족 시 최대 1개/cycle</text>
+<rect x="418" y="435" width="364" height="360" rx="9" fill="#f1f5f9" stroke="#a4b6c6"/>
+<text x="436" y="467" class="head">IQ2 · enqueue 입구 2개</text>
+<rect x="434" y="489" width="140" height="53" rx="9" fill="#e5f4ec" stroke="#a4b6c6"/>
+<text x="446" y="512" class="body">lane 1</text>
+<text x="446" y="533" class="small">누적 1개</text>
+<path d="M578 515 L606 515" fill="none" stroke="#52687b" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="612" y="489" width="153" height="53" rx="9" fill="#e5f4ec" stroke="#a4b6c6"/>
+<text x="624" y="522" class="small">입구 0 → 수용</text>
+<rect x="434" y="559" width="140" height="53" rx="9" fill="#e5f4ec" stroke="#a4b6c6"/>
+<text x="446" y="582" class="body">lane 4</text>
+<text x="446" y="603" class="small">누적 2개</text>
+<path d="M578 585 L606 585" fill="none" stroke="#52687b" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="612" y="559" width="153" height="53" rx="9" fill="#e5f4ec" stroke="#a4b6c6"/>
+<text x="624" y="592" class="small">입구 1 → 수용</text>
+<rect x="434" y="629" width="140" height="53" rx="9" fill="#ffe7dc" stroke="#a4b6c6"/>
+<text x="446" y="652" class="body">lane 7</text>
+<text x="446" y="673" class="small">누적 3개</text>
+<path d="M578 655 L606 655" fill="none" stroke="#52687b" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="612" y="629" width="153" height="53" rx="9" fill="#ffe7dc" stroke="#a4b6c6"/>
+<text x="624" y="662" class="small">입구 없음 → 대기</text>
+<text x="436" y="733" class="small">※ 누적 수는 이번 묶음의 요청 수</text>
+<text x="436" y="764" class="small">이미 IQ에 저장된 개수가 아님</text>
+<path d="M600 795 L600 825" fill="none" stroke="#52687b" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="434" y="837" width="332" height="62" rx="9" fill="#eaf2ff" stroke="#a4b6c6"/>
+<text x="450" y="864" class="head">BJU2로 issue</text>
+<text x="450" y="887" class="small">준비·선택 조건 충족 시 최대 1개/cycle</text>
+<rect x="806" y="435" width="364" height="360" rx="9" fill="#f1f5f9" stroke="#a4b6c6"/>
+<text x="824" y="467" class="head">IQ1 · enqueue 입구 2개</text>
+<rect x="822" y="489" width="140" height="53" rx="9" fill="#e5f4ec" stroke="#a4b6c6"/>
+<text x="834" y="512" class="body">lane 2</text>
+<text x="834" y="533" class="small">누적 1개</text>
+<path d="M966 515 L994 515" fill="none" stroke="#52687b" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="1000" y="489" width="153" height="53" rx="9" fill="#e5f4ec" stroke="#a4b6c6"/>
+<text x="1012" y="522" class="small">입구 0 → 수용</text>
+<rect x="822" y="559" width="140" height="53" rx="9" fill="#e5f4ec" stroke="#a4b6c6"/>
+<text x="834" y="582" class="body">lane 5</text>
+<text x="834" y="603" class="small">누적 2개</text>
+<path d="M966 585 L994 585" fill="none" stroke="#52687b" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="1000" y="559" width="153" height="53" rx="9" fill="#e5f4ec" stroke="#a4b6c6"/>
+<text x="1012" y="592" class="small">입구 1 → 수용</text>
+<text x="826" y="660" class="small">세 번째 요청 없음</text>
+<text x="824" y="733" class="small">※ 누적 수는 이번 묶음의 요청 수</text>
+<text x="824" y="764" class="small">이미 IQ에 저장된 개수가 아님</text>
+<path d="M988 795 L988 825" fill="none" stroke="#52687b" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="822" y="837" width="332" height="62" rx="9" fill="#eaf2ff" stroke="#a4b6c6"/>
+<text x="838" y="864" class="head">BJU1로 issue</text>
+<text x="838" y="887" class="small">준비·선택 조건 충족 시 최대 1개/cycle</text>
+<text x="30" y="933" class="small">위 enqueue와 아래 issue는 다른 사건이다. 새로 들어온 명령이 즉시 실행된다는 그림이 아니다.</text>
+<rect x="30" y="958" width="1140" height="116" rx="9" fill="#fff3de" stroke="#a4b6c6"/>
+<text x="48" y="990" class="head">이 그림의 조건: 3개 IQ 모두 ready, ROB 등 다른 gate도 통과</text>
+<text x="48" y="1022" class="body">이때 lane 0–5는 동시 enqueue 가능, lane 6–7은 대기. IQ가 못 받으면 더 적게 진행한다.</text>
+<text x="48" y="1053" class="small">ALU도 같은 IQ를 선택하면 입구 2개를 함께 사용한다. BJU 전용 enqueue 입구가 아니다.</text>
+<text x="30" y="1101" class="small">읽는 순서: 후보 목록 → 목적지 선택 → IQ별 누적 요청 → 입구 수용 → 나중에 issue  |  기준 f85a1f7</text></svg>
