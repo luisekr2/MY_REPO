@@ -139,6 +139,25 @@ src0는 고정된 R6으로 Bank 1을, src1은 R7으로 Bank 2를 요청한다. I
 
 실행 lane과 source 위치가 포트를 정하고, psrc가 bank를 정한다. 각 ALU는 여러 bank의 값을 읽을 수 있다.
 
+### 내가 바꾼 부분: 소비자/source의 read port 배정
+
+**사용자 설명으로 확인한 변경 범위:** IQ에 연결된 ALU·BJU 등 소비자의 각 source operand를 어느 PRF read port에 배정할지 정하는 방식을 수정했다. 앞 절의 과거 bank 인덱싱 비교는 기준 구현의 이력이며, 사용자가 설명한 이 변경과는 구분한다.
+
+<a id="fig-3-1"></a>
+
+![수정 대상은 IQ·EXU source의 PRF read port 배정](assets/int-regfile-study/figure-03-consumer-mapping.png)
+
+**그림 3-1.** 주황색은 수정 대상인 **consumer/source → read port 매핑**이다. 배정표는 요청에 따라 문서 기준 커밋 `f85a1f71`의 현재 연결을 그대로 표시했다. 사용자의 실제 변경 전·후 연결 차이는 이 그림에서 가정하지 않는다. 오른쪽은 배정된 port와 psrc의 bank 선택을 조합해 접근하는 자원이다.
+
+**그림 읽는 방법**
+
+- `IQ0 BJU0.src1`은 IQ0에 연결된 BJU0의 두 번째 source operand를 뜻한다. IQ 전체가 한 port를 공유하는 것이 아니라, EXU/source별 배정을 본다.
+- 기준 코드에서는 `ALU3.src1`, `BJU0.src1`, `LDU0.src0`가 모두 R7에 연결된다. 같은 사이클에 같은 bank를 읽으려 하면 같은 중재 자원을 요구한다.
+- 사용자가 수정한 대상은 이 **source별 port 배정과 공유 조합**이다. 이를 바꾸면 어떤 소비자끼리 경쟁하는지가 달라질 수 있다.
+- Bank는 별도로 `psrc[1:0]`에서 선택된다. Port 배정 변경과 bank 인덱싱 변경은 서로 다른 설계 항목이다. 동적 포트 선택 여부, 우선순위 변경 여부, port 수 증감은 수정 코드가 확인되기 전에는 단정하지 않는다.
+
+**발표용 설명:** “제가 바꾼 부분은 IQ에 연결된 ALU·BJU 등 각 소비자의 source를 read port에 배정하는 방식입니다. 이 배정은 어떤 소비자들이 같은 port를 공유하고, 같은 bank를 요청할 때 서로 중재하는지를 결정합니다.”
+
 ### 내 수정 사항
 
 **변경 내용**
@@ -555,6 +574,15 @@ ALU a의 src0는 R(2a), src1은 R(2a+1)이다. 각 포트 그룹은 네 bank에 
 - [DataPath.scala:658–664](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/datapath/DataPath.scala#L658-L664)
 - [RFWBConflictChecker.scala:47–115](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/datapath/RFWBConflictChecker.scala#L47-L115)
 - [RFWBConflictChecker.scala:137–180](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/datapath/RFWBConflictChecker.scala#L137-L180)
+
+
+#### 사용자 변경 대상과 기준 매핑의 근거
+
+- `Parameters.scala:343–445`: IQ별 EXU 구성과 source별 `IntRD(port, priority)` 배정. 이 그림은 `port` 값을 연결 대상으로 사용하며, 설정의 두 번째 숫자를 실행 시 고정 우선순위라고 단정하지 않는다.
+- `ExeUnitParams.scala:25`: source별 `rfrPortConfigs` 설정.
+- `RFReadArbiter.scala:196–222`: 설정의 port로 요청을 묶고 bank별 요청을 중재하는 연결.
+- `DataPath.scala:527–549`: source별 read port 설정과 bank mask를 사용해 반환 데이터를 선택한다.
+- 변경 목적과 개선 효과는 사용자 코드·검증 결과로 보완할 항목이다. 현재 그림만으로 충돌률·IPC 개선을 주장하지 않는다.
 
 <a id="ref-arbitration"></a>
 
