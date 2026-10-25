@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1110" viewBox="0 0 1200 1110"><defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#53677c"/></marker></defs><style>text{font-family:'Malgun Gothic',Arial,sans-serif;fill:#172c41} .t{font-size:24px;font-weight:700}.s{font-size:17px}.b{font-size:19px;font-weight:700}.v{font-size:17px}</style><rect width="1200" height="1110" fill="#fff"/>
+<text x="30" y="42" class="t">그림 3-1 · 목적지 IQ를 선택하는 조합 논리와 레지스터</text>
+<text x="30" y="73" class="s">기준: f85a1f7 / RenameWidth=8 / EnableDispatchIQBalanceOpt=true · 파란 상자는 레지스터</text>
+<rect x="30" y="100" width="1140" height="85" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="45" y="129" class="b">후보 집합은 설정으로 고정 → 실행 중에는 fuType 디코더로 선택</text>
+<text x="45" y="158" class="v">ALU: IQ0–5 / BJU: IQ0–2 / 단일 후보 FU: 고정 one-hot · STD는 직접 Dispatch 후보에서 제외</text>
+<path d="M30,207 H1170" stroke="#d6dfe8"/>
+<text x="30" y="237" class="b">① EXU별 부하 점수 → 후보 순위 (FU 그룹마다 생성)</text>
+<rect x="30" y="255" width="260" height="115" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="45" y="284" class="b">Q[e] · A[e]</text>
+<text x="45" y="313" class="v">Q: IQValidNumVec[e]</text>
+<text x="45" y="338" class="v">A: 현재 선택된 해당 FU 수</text>
+<rect x="330" y="255" width="240" height="115" rx="9" fill="#e7efff" stroke="#5578b7" stroke-width="1.5"/>
+<text x="345" y="284" class="b">countReg · 점수 등록</text>
+<text x="345" y="313" class="v">RegNext(Q[e] + A[e])</text>
+<rect x="610" y="255" width="240" height="115" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="625" y="284" class="b">가산기</text>
+<text x="625" y="313" class="v">score[e] = countReg[e]</text>
+<text x="625" y="338" class="v">                   + A[e]</text>
+<rect x="890" y="255" width="280" height="115" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="905" y="284" class="b">비교기 행렬</text>
+<text x="905" y="313" class="v">score[a] &lt; score[b]</text>
+<text x="905" y="338" class="v">동점: 인덱스로 순서 고정</text>
+<polyline points="290,312 330,312" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="570,312 610,312" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="850,312 890,312" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<rect x="890" y="420" width="280" height="115" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="905" y="449" class="b">PopCount + 순위 디코드</text>
+<text x="905" y="478" class="v">행별 PopCount 비교</text>
+<text x="905" y="503" class="v">→ IQSortWire[rank]</text>
+<rect x="480" y="420" width="330" height="115" rx="9" fill="#e7efff" stroke="#5578b7" stroke-width="1.5"/>
+<text x="495" y="449" class="b">IQSort · IQSortValidCnt</text>
+<text x="495" y="478" class="v">one-hot 순위 + 순위별 점수</text>
+<text x="495" y="503" class="v">매 사이클 등록</text>
+<rect x="30" y="420" width="370" height="115" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="45" y="449" class="b">3개 순위씩 부분 재정렬</text>
+<text x="45" y="478" class="v">등록 점수 + 현재 A로 보정</text>
+<text x="45" y="503" class="v">→ IQSortUpdate (조합 논리)</text>
+<polyline points="1030,370 1030,420" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="890,477 810,477" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="480,477 400,477" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<text x="30" y="565" class="s">A[e] = PopCount(현재 uopSelIQ가 EXU의 IQ를 선택하고 fuType이 맞는 lane) · fire 조건 없이 계산</text>
+<path d="M30,590 H1170" stroke="#d6dfe8"/>
+<text x="30" y="620" class="b">② lane별 FU 디코드 → 같은 그룹 내 순번 → 후보 선택 → 목적지 등록</text>
+<rect x="30" y="645" width="265" height="135" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="45" y="674" class="b">입력별 FU 디코더</text>
+<text x="45" y="703" class="v">renameIn: 다음 묶음</text>
+<text x="45" y="728" class="v">fromRename: 대기 묶음</text>
+<text x="45" y="753" class="v">각 입력에 별도 계산 경로</text>
+<rect x="335" y="645" width="260" height="135" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="350" y="674" class="b">앞선 같은 그룹 수</text>
+<text x="350" y="703" class="v">n = PopCount(lane &lt; i)</text>
+<text x="350" y="728" class="v">자기 자신은 제외</text>
+<text x="350" y="753" class="v">rank = n % 후보 수</text>
+<rect x="635" y="645" width="240" height="135" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="650" y="674" class="b">후보 선택 MUX</text>
+<text x="650" y="703" class="v">IQSortUpdate[rank]</text>
+<text x="650" y="728" class="v">→ IQ one-hot</text>
+<text x="650" y="753" class="v">단일 후보: 상수 one-hot</text>
+<rect x="915" y="645" width="255" height="135" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="930" y="674" class="b">FU 그룹 선택 MUX</text>
+<text x="930" y="703" class="v">multi: Mux1H</text>
+<text x="930" y="728" class="v">single: Mux1H</text>
+<text x="930" y="753" class="v">lane별 선택 결과</text>
+<polyline points="295,712 335,712" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="595,712 635,712" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="875,712 915,712" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="30,477 15,477 15,634 755,634 755,645" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<text x="785" y="636" class="s">순위 목록</text>
+<rect x="520" y="845" width="650" height="150" rx="9" fill="#fff2dc" stroke="#8098a9" stroke-width="1.5"/>
+<text x="535" y="874" class="b">선택 갱신 MUX · 위에서부터 우선순위</text>
+<text x="535" y="903" class="v">1. toRenameAllFire → renameIn 선택 (invalid이면 0)</text>
+<text x="535" y="928" class="v">2. valid &amp;&amp; !ready → 대기 fromRename 재선택</text>
+<text x="535" y="953" class="v">3. fire → 0 / 4. 그 외 → 이전 값 유지</text>
+<rect x="30" y="845" width="400" height="150" rx="9" fill="#e7efff" stroke="#5578b7" stroke-width="1.5"/>
+<text x="45" y="874" class="b">uopSelIQ[i][j] · 목적지 레지스터</text>
+<text x="45" y="903" class="v">8 lanes × I개 IQ 목적지 bit</text>
+<text x="45" y="928" class="v">U[i,j] → 그림 3-2의 enqueue·stall 논리</text>
+<text x="45" y="953" class="v">현재 U → 위의 A[e] 계산에 사용</text>
+<polyline points="1040,780 1040,845" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="520,920 430,920" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<text x="30" y="1035" class="s">I = Dispatch의 직접 목적지 수. 정수 영역은 13 IQ 중 STD 2개를 제외한 11개가 직접 후보.</text>
+<text x="30" y="1065" class="s">현재 ready는 위 순위의 후보 제거 마스크가 아니다. stall 재선택도 uopSelIQ 레지스터를 거친다.</text></svg>

@@ -136,6 +136,45 @@ IQ4·IQ0에 두 개씩 enqueue되어도 각 ALU 출력의 issue 폭은 하나다
 
 실행 가능한 후보를 먼저 정하고, 같은 FU 그룹의 명령을 후보 순위에 따라 나눈다.
 
+
+### Dispatch 내부 논리로 보면 어떻게 연결될까?
+
+그림 3의 분배를 실제 비교기·PopCount·MUX·레지스터로 펼치면 아래 두 단계가 된다. **목적지 선택과 해당 목적지의 수용 판정은 별도 경로**다. 이 그림은 기준 커밋의 현재 구현이며, IQ를 분할한 변경안은 아니다.
+
+![FU 디코드, 부하 순위와 목적지 선택 레지스터](assets/issue-queue-study/figure-03a-dispatch-selection.png)
+
+**그림 3-1.** FU 후보 선택 → 부하 순위 → lane별 그룹 순번 → `uopSelIQ` 등록. 파란 상자는 실제 레지스터 경계다. 고정된 전체 파이프라인 사이클 수를 뜻하지 않는다.
+
+[SVG 원본](assets/issue-queue-study/figure-03a-dispatch-selection.svg)
+
+- **실행 가능한 후보:** 설정에서 FU별 EXU·IQ 후보를 정한다. 실행 중에는 `fuType`을 디코드해서 해당 후보 그룹을 선택한다.
+- **부하 순위:** EXU별 지표 Q와 현재 선택 수 A로 점수를 만든다. 비교기 행렬과 PopCount가 순위를 만들고, 등록된 순위는 3개씩 나누어 보정한다. 매 lane마다 현재 빈칸 수를 새로 비교하는 구조와는 다르다.
+- **묶음 내 분산:** 같은 FU 그룹의 앞선 valid lane 수를 n이라 하면 후보 순위의 `n % 후보 수` 위치를 선택한다. 단일 후보 FU는 고정 목적지로 간다.
+- **목적지 유지·갱신:** 다음 묶음을 받을 때 새 선택을 등록한다. 막힌 lane은 유지 중인 `fromRename`으로 목적지를 재계산해 갱신한다. 현재 사이클의 ready를 보고 즉시 다른 IQ로 우회하는 조합 경로는 없다.
+
+![누적 PopCount, enqueue PriorityMux와 ready 차단 경로](assets/issue-queue-study/figure-03b-dispatch-enqueue.png)
+
+**그림 3-2.** `uopSelIQ` → 누적 개수 → enqueue 포트별 PriorityMux. 아래 경로는 IQ·ROB·LSQ·순서 조건으로 ready와 IQ valid를 제한한다. 그림의 11개 목적지와 22개 enqueue 포트는 **정수 영역 기여분**이며 전체 Dispatch의 합계가 아니다.
+
+[SVG 원본](assets/issue-queue-study/figure-03b-dispatch-enqueue.svg)
+
+**작은 명령열로 따라가기**
+
+`U0: add x10,x1,x2`, `U1: xor x11,x3,x4`, `U2: sub x12,x5,x6`의 목적지가 A, B, A로 이미 정해졌다고 가정한다. A·B는 설명용 IQ 이름이며 실제 후보 순위와 무관하다.
+
+| lane | 선택 IQ | A 선택 누적 수 | A의 enqueue 포트 선택 | A.ready=0일 때 |
+| --- | --- | --- | --- | --- |
+| 0 · U0 | A | 1 | port0의 첫 번째 일치 → U0 | 차단 |
+| 1 · U1 | B | 1 | port0 비교는 일치하지만 PriorityMux에서 뒤 순서 | 앞선 A 요청 때문에 차단 |
+| 2 · U2 | A | 2 | port1의 첫 번째 일치 → U2 | 차단 |
+
+A가 2개 enqueue 포트를 가지며 모든 gate가 허용하면 A.port0은 U0, A.port1은 U2를 받는다. B의 포트 선택은 B의 별도 누적 수로 결정한다. A가 ready가 아니면 A의 누적 요구가 있는 뒤쪽 lane도 막힌다. 따라서 **B에 빈자리가 있다는 사실만으로 U1이 진행하지는 않는다.**
+
+**핵심 결론 — IQ 분할 비용이 생기는 위치**
+
+직접 목적지 수를 I, 총 enqueue 포트 수를 P라 하면 `uopSelIQ`는 8×I개의 선언된 bit이며, 누적 PopCount와 차단 판정도 8×I 위치에 생성된다. 넓은 uop 선택 MUX는 P개다. EXU 수와 FU 후보 수가 그대로라면 부하 순위 비교기가 IQ 수에 비례해 무조건 늘어나는 것은 아니다. **추가 목적지의 선택·수용 회로와 총 enqueue 포트 수를 각각 계산해야 한다.** 이는 RTL 구조량이고 합성 후 gate 수·면적·지연 측정값은 아니다.
+
+
 ### 내 수정 사항
 
 **변경 내용**
@@ -402,6 +441,25 @@ BJU는 두 번째 ALU가 아니다. IQ0의 ADD 두 개를 ALU0와 BJU0에 나눠
 **A/C · 본문 3절.** 순위 \[4,0,5,2,1,3\]을 가정하면 k=0…7의 목적지는 \[4,0,5,2,1,3,4,0\]다. 모든 IQ ready와 ROB·LSQ·순서 gate 통과를 가정한다.
 
 **Store 예외 경로.** STD는 독립 Dispatch 후보가 아니다. STA0의 enqueue는 STD0로, STA1은 STD1로 복제한다. 선택 pair의 ready는 staReady && stdReady && vstdReady이며 주소·데이터 issue는 이후 별도로 진행된다.
+
+
+#### 그림 3-1·3-2와 RTL의 대응
+
+| 그림의 논리 | 실제 신호·소스 위치 | 해석할 때의 조건 |
+| --- | --- | --- |
+| FU별 후보 집합 | Dispatch.scala:53–102, `needMultiExu`, `needSingleIQ` | Scala 설정 전개로 연결을 정한다. STD·VSTD는 직접 후보에서 제외한다. |
+| 선택 수와 점수 | Dispatch.scala:432–445, `needAppendIQValidNumVec`, `issueQueueCountReg` | A는 현재 선택된 lane 수이며 fire로 제한하지 않는다. |
+| 비교·순위 레지스터·부분 재정렬 | Dispatch.scala:446–512, `compareMatrix`, `IQSort`, `IQSortUpdate` | 후보 EXU 그룹별 구성. 3개씩 보정한 결과가 전체 후보의 새로운 전역 정렬과 같다고 가정하지 않는다. |
+| FU 디코드·앞선 같은 그룹 수 | Dispatch.scala:515–560, `fuTypeOH`, `popFuTypeOH` | 자신은 제외한다. 다음 묶음과 대기 묶음에 각각 계산한다. |
+| 목적지 갱신 | Dispatch.scala:561–579, `uopSelIQ` | allFire 갱신 → blocked 재선택 → fire clear → hold 우선순위. 기준 설정에서 balance opt 활성. |
+| IQ별 누적 수 | Dispatch.scala:580–585, `uopSelIQMatrix` | 자신을 포함한다. FU 그룹의 앞선 lane 수와 다른 계산이다. |
+| 포트별 데이터 MUX | Dispatch.scala:611–639, `IQSelUop` | `oh=(C==p+1)`를 PriorityMux에 넣는다. payload와 valid가 같은 우선순위를 따른다. |
+| 차단 행렬 | Dispatch.scala:641–648, `uopBlockMatrix` | ready=1이면 포트 수 초과, ready=0이면 누적 요청 존재 시 차단. |
+| ready·IQ valid | Dispatch.scala:594–596 | IQ valid에는 move·exception·singleStep 제외 조건이 추가된다. |
+| ROB 수용·등록 | Dispatch.scala:885–892 | `thisCanActualOut`에 ROB canAccept 포함. ROB req.valid는 fromRename.fire. |
+
+선택 레지스터와 정렬 레지스터의 경계만 표시했다. 예제는 하나의 선택 상태에서 조합 논리가 무엇을 산출하는지 보여주며, 명령 수신부터 IQ 진입까지의 고정 사이클 수나 실제 측정 파형을 주장하지 않는다. `toRenameAllFire`는 모든 lane이 invalid이거나 fire일 때 참이다(Dispatch.scala:165).
+
 
 #### 소스 근거
 

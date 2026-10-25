@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1090" viewBox="0 0 1200 1090"><defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#53677c"/></marker></defs><style>text{font-family:'Malgun Gothic',Arial,sans-serif;fill:#172c41} .t{font-size:24px;font-weight:700}.s{font-size:17px}.b{font-size:19px;font-weight:700}.v{font-size:17px}</style><rect width="1200" height="1090" fill="#fff"/>
+<text x="30" y="42" class="t">그림 3-2 · 선택한 IQ의 enqueue 포트 배정과 수용 판정</text>
+<text x="30" y="73" class="s">U[i,j]=uopSelIQ · C[i,j]=lane 0…i의 IQ j 선택 누적 수 · p는 IQ 내부 enqueue 포트 번호</text>
+<rect x="30" y="105" width="300" height="130" rx="9" fill="#e7efff" stroke="#5578b7" stroke-width="1.5"/>
+<text x="45" y="134" class="b">선택 레지스터 U[i,j]</text>
+<text x="45" y="163" class="v">8 lanes × I개 직접 목적지</text>
+<text x="45" y="188" class="v">lane별 IQ one-hot</text>
+<rect x="400" y="105" width="360" height="130" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="415" y="134" class="b">누적 PopCount 행렬</text>
+<text x="415" y="163" class="v">C[i,j] = PopCount(U[0…i,j])</text>
+<text x="415" y="188" class="v">자기 lane도 포함 · 8×I개 위치</text>
+<rect x="830" y="105" width="340" height="130" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="845" y="134" class="b">enqueue 포트별 == 비교</text>
+<text x="845" y="163" class="v">oh[i] = (C[i,j] == p+1)</text>
+<text x="845" y="188" class="v">p = 0…numEnq[j]−1</text>
+<polyline points="330,170 400,170" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="760,170 830,170" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<rect x="30" y="285" width="420" height="115" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="45" y="314" class="b">fromRenameUpdate · 8 lane payload</text>
+<text x="45" y="343" class="v">uop bits / srcState / gated valid</text>
+<text x="45" y="368" class="v">아래 수용 조건으로 valid를 제한</text>
+<rect x="590" y="285" width="580" height="115" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="605" y="314" class="b">PriorityMux → IQSelUop → toIssueQueues</text>
+<text x="605" y="343" class="v">oh가 처음 참인 lane의 payload와 valid 선택</text>
+<text x="605" y="368" class="v">IQ마다 numEnq개 복제 · 총 P개의 넓은 MUX</text>
+<polyline points="1000,235 1000,285" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="450,345 590,345" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<rect x="30" y="430" width="1140" height="105" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="45" y="459" class="b">왜 PriorityMux인가?  목적지 [A, B, A]이면 C[:,A] = [1, 1, 2]</text>
+<text x="45" y="488" class="v">A.port0: C==1 → [1,1,0] → 가장 앞의 lane0 / A.port1: C==2 → lane2</text>
+<text x="45" y="513" class="v">RTL의 oh는 C==p+1이다. U[i,j]와 AND한 one-hot 선택이라고 바꿔 해석하면 안 된다.</text>
+<path d="M30,560 H1170" stroke="#d6dfe8"/>
+<text x="30" y="590" class="b">수용 판정 · lane i 이전까지의 누적 요구가 하나라도 막히면 lane i도 차단</text>
+<rect x="30" y="620" width="370" height="160" rx="9" fill="#fff2dc" stroke="#8098a9" stroke-width="1.5"/>
+<text x="45" y="649" class="b">IQ j의 차단 조건 B[i,j]</text>
+<text x="45" y="678" class="v">ready[j] = 첫 enqueue 포트 ready</text>
+<text x="45" y="703" class="v">ready=1 → C[i,j] &gt; numEnq[j]</text>
+<text x="45" y="728" class="v">ready=0 → C[i,j] != 0</text>
+<text x="45" y="753" class="v">구현: 위 두 조건의 MUX</text>
+<rect x="445" y="620" width="255" height="160" rx="9" fill="#fff2dc" stroke="#8098a9" stroke-width="1.5"/>
+<text x="460" y="649" class="b">목적지 전체 OR</text>
+<text x="460" y="678" class="v">block[i] = OR_j B[i,j]</text>
+<text x="460" y="703" class="v">→ uopBlockByIQ[i]</text>
+<text x="460" y="728" class="v">8 lane마다 계산</text>
+<rect x="745" y="620" width="425" height="160" rx="9" fill="#fff2dc" stroke="#8098a9" stroke-width="1.5"/>
+<text x="760" y="649" class="b">AND 수용 게이트 → ready[i]</text>
+<text x="760" y="678" class="v">!block[i] &amp;&amp; allowDispatch[i]</text>
+<text x="760" y="703" class="v">&amp;&amp; thisCanActualOut[i]</text>
+<text x="760" y="728" class="v">&amp;&amp; !lsqRecoverStall</text>
+<text x="760" y="753" class="v">ROB canAccept는 thisCanActualOut에 포함</text>
+<polyline points="400,700 445,700" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="700,700 745,700" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="530,235 530,255 15,255 15,600 215,600 215,620" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<text x="30" y="277" class="s">C[i,j]</text>
+<rect x="30" y="835" width="340" height="145" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="45" y="864" class="b">fire = valid &amp;&amp; ready</text>
+<text x="45" y="893" class="v">ROB 등록 요청 valid = fire</text>
+<text x="45" y="918" class="v">IQ 출력 valid는 추가 필터 적용</text>
+<text x="45" y="943" class="v">Move / exception / singleStep 제외</text>
+<rect x="410" y="835" width="350" height="145" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="425" y="864" class="b">ready=0 → 입력 유지</text>
+<text x="425" y="893" class="v">그림 3-1의 대기 묶음 경로로</text>
+<text x="425" y="918" class="v">다음 uopSelIQ 갱신 때 재선택</text>
+<text x="425" y="943" class="v">같은 사이클 즉시 우회가 아님</text>
+<rect x="800" y="835" width="370" height="145" rx="9" fill="#eef7f4" stroke="#8098a9" stroke-width="1.5"/>
+<text x="815" y="864" class="b">예: A가 막히면?</text>
+<text x="815" y="893" class="v">목적지 [A,B,A], A.ready=0</text>
+<text x="815" y="918" class="v">A 누적 수 [1,1,2] → 모두 차단</text>
+<text x="815" y="943" class="v">lane1의 B가 ready여도 막힘</text>
+<polyline points="950,780 950,810 200,810 200,835" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<polyline points="950,810 580,810 580,835" fill="none" stroke="#53677c" stroke-width="2"  marker-end="url(#arr)"/>
+<text x="30" y="1020" class="s">I=직접 목적지 수 / P=Σ numEnq[j]. 정수 부분: I=11, P=22. 전체 Dispatch에는 FP·Vector 후보도 있다.</text>
+<text x="30" y="1050" class="s">IQ 분할 시 8×I 선택·누적·차단 로직이 증가. 넓은 payload MUX 증가는 IQ 수보다 총 enqueue 포트 P에 좌우된다.</text></svg>
