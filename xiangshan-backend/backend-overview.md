@@ -23,11 +23,19 @@ Kunminghu V3 · DefaultConfig(1) · f85a1f71da8c1522035744c71e2cb266bfed1a7d<br>
 
 <a id="fig-1"></a>
 
-![XSCore 안의 Frontend Backend MemBlock 경계](assets/backend-overview/figure-01.png)
+![XSCore 경계와 CtrlBlock 내부 ROB의 등록·완료 경로](assets/backend-overview/figure-01.png)
 
-**그림 1.** XSCore의 형제 블록과 Backend의 주요 자식만 표시했다. FP·Vector는 위치만 남기고 전용 설명은 생략한다.
+**그림 1.** ROB는 Backend의 CtrlBlock 안에 있다. Dispatch의 명령 등록 요청은 1단 레지스터를 거쳐 ROB에 들어가며, 실행 완료는 별도의 writeback 경로로 통보된다. FP·Vector는 위치만 표시하고, 메모리 결과 및 기타 완료·복구 배선은 단순화했다.
 
 [SVG 원본](assets/backend-overview/figure-01.svg)
+
+**ROB 입력은 언제 들어오는가?**
+
+- **등록 요청:** Rename을 지난 명령이 Dispatch의 `fromRename(i).fire`로 수락되면 `enqRob.req(i).valid`가 올라간다. 명령의 순서·완료 추적 정보를 ROB로 보내는 시점이다.
+- **ROB 입력 도착:** CtrlBlock이 valid를 `RegNext`, payload를 `RegEnable`로 전달하므로 요청은 **1단 레지스터를 거쳐 다음 사이클**에 `rob.io.enq.req`에 도착한다. ROB 내부에서는 `req.valid && canAccept`일 때 enqueue 상태를 갱신한다. redirect는 전달 중인 요청의 valid를 취소할 수 있다.
+- **실행 완료 입력:** 이후 EXU·메모리 실행의 writeback 정보가 이미 등록된 ROB의 완료 상태를 갱신한다. 최종 commit은 ROB의 순서·완료·예외 조건을 별도로 만족해야 한다.
+
+Rename에서 미리 부여하는 `robIdx`와 ROB 저장 상태에 실제로 등록하는 이벤트는 구분한다. ROB compression이 활성화된 이 구성에서는 여러 명령이 한 entry를 공유할 수 있으므로, 수락된 명령마다 새 entry를 하나씩 만든다고 해석하지 않는다.
 
 **핵심 결론**
 
@@ -225,6 +233,14 @@ Backend는 inner: BackendInlined를 감싸고 그 안에 CtrlBlock, Int/FP/Vecto
 - [BackendParams.scala:419–491](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/BackendParams.scala#L419-L491)
 - [XSCore.scala:59–76](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/XSCore.scala#L59-L76)
 - [Backend.scala:196–256](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/Backend.scala#L196-L256)
+
+#### ROB 등록 시점의 소스 근거
+
+- `Rename.scala:334–343, 495–498`: speculative robIdx 부여와 entry/slot 위치.
+- `Dispatch.scala:850–904`: 자원·순서 조건과 `enqRob.req(i).valid := fromRename(i).fire`.
+- `CtrlBlock.scala:780–802`: Rename–Dispatch 경계, ROB 요청의 1단 지연과 redirect 차단.
+- `Rob.scala:203–208, 572–575`: ROB 수락 조건과 enqueue 상태 갱신.
+- `CtrlBlock.scala:858–863`: 등록 경로와 별도인 ROB writeback 입력 연결.
 
 <a id="ref-2"></a>
 
