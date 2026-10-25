@@ -23,9 +23,9 @@ Kunminghu V3 · DefaultConfig(1) · f85a1f71da8c1522035744c71e2cb266bfed1a7d<br>
 
 <a id="fig-1"></a>
 
-![XSCore 경계와 CtrlBlock 내부 ROB의 등록·완료 경로](assets/backend-overview/figure-01.png)
+![Backend와 Int Region 내부 IQ·Regfile·RegCache·실행 경로](assets/backend-overview/figure-01.png)
 
-**그림 1.** ROB는 Backend의 CtrlBlock 안에 있다. Dispatch의 명령 등록 요청은 1단 레지스터를 거쳐 ROB에 들어가며, 실행 완료는 별도의 writeback 경로로 통보된다. FP·Vector는 위치만 표시하고, 메모리 결과 및 기타 완료·복구 배선은 단순화했다.
+**그림 1.** CtrlBlock의 ROB와 Int Region 내부를 함께 표시했다. Int Regfile·RegCache는 DataPath 안에 있고, BypassNetwork·ExuBlock·WbDataPath는 Region의 별도 하위 블록이다. Dispatch에서 ROB 등록과 IQ 전달이 분기한다. 결과 기록·wakeup·cancel 귀환은 그림 아래 설명으로 표시했으며, 모든 포트·레지스터 경계를 펼친 회로도는 아니다.
 
 [SVG 원본](assets/backend-overview/figure-01.svg)
 
@@ -34,6 +34,8 @@ Kunminghu V3 · DefaultConfig(1) · f85a1f71da8c1522035744c71e2cb266bfed1a7d<br>
 - **등록 요청:** Rename을 지난 명령이 Dispatch의 `fromRename(i).fire`로 수락되면 `enqRob.req(i).valid`가 올라간다. 명령의 순서·완료 추적 정보를 ROB로 보내는 시점이다.
 - **ROB 입력 도착:** CtrlBlock이 valid를 `RegNext`, payload를 `RegEnable`로 전달하므로 요청은 **1단 레지스터를 거쳐 다음 사이클**에 `rob.io.enq.req`에 도착한다. ROB 내부에서는 `req.valid && canAccept`일 때 enqueue 상태를 갱신한다. redirect는 전달 중인 요청의 valid를 취소할 수 있다.
 - **실행 완료 입력:** 이후 EXU·메모리 실행의 writeback 정보가 이미 등록된 ROB의 완료 상태를 갱신한다. 최종 commit은 ROB의 순서·완료·예외 조건을 별도로 만족해야 한다.
+
+일반적인 정수 명령은 **ROB와 선택된 IQ가 모두 수용 가능하고 다른 순서·자원 조건도 충족할 때** Dispatch가 진행된다. ROB가 등록을 마친 명령을 IQ로 보내는 직렬 경로가 아니라, Dispatch에서 ROB 등록 요청과 IQ 전달로 나뉘는 구조다.
 
 Rename에서 미리 부여하는 `robIdx`와 ROB 저장 상태에 실제로 등록하는 이벤트는 구분한다. ROB compression이 활성화된 이 구성에서는 여러 명령이 한 entry를 공유할 수 있으므로, 수락된 명령마다 새 entry를 하나씩 만든다고 해석하지 않는다.
 
@@ -110,6 +112,21 @@ Decode는 실행 표현을 만들고, Rename은 레지스터 이름과 자원을
 **그림 3.** 기능 흐름을 묶은 그림이다. wakeup은 준비 정보, bypass는 값 전달이며 파이프라인 단계와 latency는 생략했다.
 
 [SVG 원본](assets/backend-overview/figure-03.svg)
+
+**Int Region 안에서는 무엇을 하는가?**
+
+| 블록 | 역할과 연결 |
+|---|---|
+| `issueQueues` | 정수·메모리 발행용 13개 IQ가 명령과 operand 준비 상태를 유지하고 실행 후보를 선택한다. ALU·BJU용 IQ와 load/store용 IQ가 포함된다. |
+| `dataPath` — Int Regfile | 정수 physical register의 값을 저장한다. 기준 구성은 **224 × 64-bit, 4 banks × 56 rows**이며, PRF 요청을 port·bank별로 중재한 뒤 operand를 읽는다. |
+| `dataPath` — RegCache | 실행 결과 일부를 재사용할 수 있는 작은 저장소다. **IntRegCache 24 entries + MemRegCache 12 entries**이며 둘 다 DataPath 안에 있다. 여기서 MemRegCache라는 이름은 MemBlock 안에 있다는 뜻이 아니다. |
+| `bypassNetwork` | source별 `dataSources`에 따라 PRF, RegCache, forward/bypass, 즉시값·zero 등에서 operand를 선택해 실행 경로로 보낸다. PRF → RegCache를 반드시 차례대로 통과하는 구조가 아니다. |
+| `exuBlock` | 로컬 정수 ALU·분기·기타 FU를 실행한다. load/store 발행 경로는 MemBlock으로 이어지므로 13개 IQ를 모두 로컬 ALU 큐로 해석하면 안 된다. |
+| `wbDataPath` | 실행 결과의 writeback을 중재·전달한다. 정수 PRF 기록과 CtrlBlock의 ROB 완료 통보는 용도가 다른 경로다. |
+
+**Regfile과 RegCache의 차이:** PRF는 정수 physical register의 값을 유지하는 저장소이고, RegCache는 지원되는 실행 결과를 재사용하기 위한 보조 저장소다. IQ가 source별 RC 사용 여부와 index를 관리하며, DataPath에서 일반적인 cache tag miss를 검사한 뒤 PRF를 다시 읽는 흐름으로 설명하지 않는다. RC 기록 데이터는 BypassNetwork에서 DataPath의 RegCache로 전달된다.
+
+**정지·재선택:** IQ에 들어온 뒤에도 source 준비·발행 선택·operand 공급 조건을 만족해야 실행된다. PRF 중재나 후속 수락 조건이 실패하면 cancel/실패 응답을 통해 IQ가 재선택할 수 있다. wakeup은 준비 정보이고 bypass는 실제 값 전달이다.
 
 **핵심 결론**
 
@@ -283,6 +300,15 @@ Int Region은 13 IQ, 총 238 entries다. IQ0–2는 각각 ALU와 BJU를 함께 
 - [WbArbiter.scala:40–78](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/datapath/WbArbiter.scala#L40-L78)
 - [Regfile.scala:145–204](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/regfile/Regfile.scala#L145-L204)
 - [DataPath.scala:57–60](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/datapath/DataPath.scala#L57-L60)
+
+#### Int Region 세부 구조의 소스 근거
+
+- `Region.scala:42–57, 475–503`: IQ·DataPath·BypassNetwork·ExuBlock·WbDataPath 생성 및 PRF/RC/실행 결과 연결.
+- `DataPath.scala:60–112, 273–308`: PRF read 중재와 IntRegFileBank 생성·writeback.
+- `DataPath.scala:330–366, 527–549`: RegCache 생성·읽기·기록 및 PRF bank 데이터 선택.
+- `BypassNetwork.scala:181–216, 238–262`: source별 PRF/RC/forward/bypass 선택과 RC 기록 데이터 전달.
+- `RegCache.scala:40–90`: IntRegCache·MemRegCache 내부 구성과 read/write 연결.
+- `Parameters.scala:152–153`: IntRegCache 24 entries·MemRegCache 12 entries의 기준 용량.
 
 <a id="ref-4"></a>
 
