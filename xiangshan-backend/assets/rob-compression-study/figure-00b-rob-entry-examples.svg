@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1100" viewBox="0 0 1240 1100"><defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#506b82"/></marker></defs><style>text{font-family:'Malgun Gothic',Arial,sans-serif;fill:#172c41}.title{font-size:26px;font-weight:700}.head{font-size:20px;font-weight:700}.body{font-size:17px}.small{font-size:16px}</style><rect width="1240" height="1100" fill="white"/>
+<text x="30" y="42" class="title">같은 명령열이 이전 ROB와 새 ROB에 어떻게 저장될까?</text>
+<text x="30" y="74" class="small">각 행은 독립된 Rename batch. 압축 허용·FTQ 경계 통과·fusion/move 없음 가정. S=연속 simple run, C=complex 명령.</text>
+<text x="30" y="119" class="head">입력 명령열</text>
+<text x="380" y="119" class="head">이전 · 대괄호 하나 = physical entry</text>
+<text x="820" y="119" class="head">새 구현 · | 는 former/latter 경계</text>
+<rect x="30" y="140" width="1180" height="91" rx="9" fill="#f2f5fa" stroke="#91a8bf"/>
+<text x="45" y="176" class="head">ADD, XOR</text>
+<text x="45" y="207" class="body">1 → 1 entries</text>
+<text x="395" y="188" class="body">[ADD, XOR]</text>
+<text x="835" y="188" class="body">NORMAL [S: ADD, XOR]</text>
+<rect x="30" y="245" width="1180" height="91" rx="9" fill="#f0f7f4" stroke="#91a8bf"/>
+<text x="45" y="281" class="head">ADD, XOR, LD</text>
+<text x="45" y="312" class="body">2 → 1 entries</text>
+<text x="395" y="293" class="body">[ADD, XOR]  [LD]</text>
+<text x="835" y="293" class="body">SC [S: ADD, XOR | C: LD]</text>
+<rect x="30" y="350" width="1180" height="91" rx="9" fill="#f2f5fa" stroke="#91a8bf"/>
+<text x="45" y="386" class="head">LD, ADD, XOR</text>
+<text x="45" y="417" class="body">2 → 1 entries</text>
+<text x="395" y="398" class="body">[LD]  [ADD, XOR]</text>
+<text x="835" y="398" class="body">CS [C: LD | S: ADD, XOR]</text>
+<rect x="30" y="455" width="1180" height="91" rx="9" fill="#f0f7f4" stroke="#91a8bf"/>
+<text x="45" y="491" class="head">LD, BEQ</text>
+<text x="45" y="522" class="body">2 → 1 entries</text>
+<text x="395" y="503" class="body">[LD]  [BEQ]</text>
+<text x="835" y="503" class="body">CC [C: LD | C: BEQ]</text>
+<rect x="30" y="560" width="1180" height="91" rx="9" fill="#f2f5fa" stroke="#91a8bf"/>
+<text x="45" y="596" class="head">ADD, XOR, BEQ</text>
+<text x="45" y="627" class="body">1 → 1 entries</text>
+<text x="395" y="608" class="body">[ADD, XOR, BEQ]</text>
+<text x="835" y="608" class="body">SC [S: ADD, XOR | C: BEQ]</text>
+<rect x="30" y="687" width="1180" height="91" rx="9" fill="#fff2dd" stroke="#91a8bf"/>
+<text x="44" y="715" class="head">수보다 중요한 변화: 같은 entry 안의 어느 쪽이 끝났고, 어느 쪽을 지울지 구분</text>
+<text x="44" y="744" class="body">이전에도 압축 가능한 연산 뒤에 branch/jump를 붙일 수 있었다. 새 구현의 핵심은 complex pairing과 슬롯 경계다.</text>
+<rect x="30" y="810" width="555" height="151" rx="9" fill="#eff5fb" stroke="#91a8bf"/>
+<text x="44" y="838" class="head">이전: [ADD, XOR, BEQ]</text>
+<text x="44" y="867" class="body">완료 예: uopNum 3 → 2 → 1 → 0</text>
+<text x="44" y="892" class="body">각 WB를 묶음 전체 count에서 차감</text>
+<text x="44" y="917" class="body">BEQ의 flushAfter는 해당 entry를 보존</text>
+<rect x="625" y="810" width="585" height="151" rx="9" fill="#eff5fb" stroke="#91a8bf"/>
+<text x="639" y="838" class="head">새 구현: SC [ADD, XOR | BEQ]</text>
+<text x="639" y="867" class="body">완료 예: (F,L) = (2,1) → (0,1) → (0,0)</text>
+<text x="639" y="892" class="body">앞·뒤 완료를 따로 추적, 정상 retire는 전체 entry</text>
+<text x="639" y="917" class="body">latter BEQ의 flushAfter: 두 슬롯 모두 보존</text>
+<rect x="30" y="986" width="1180" height="80" rx="9" fill="#e6f5ed" stroke="#91a8bf"/>
+<text x="44" y="1014" class="head">새 SC [ADD, XOR | LD]에서 latter LD가 예외로 self-flush되면</text>
+<text x="44" y="1043" class="body">former [ADD, XOR]를 남겨 NORMAL로 재구성 → 복구 후 남은 명령을 정상 retire. 실제 예외 처리 gate·순서 대기는 별도.</text></svg>

@@ -9,6 +9,8 @@ F: 소스 사실 / A: 설명용 가정 / C: 계산 / M: 추가 측정. 각 명�
 
 ## 읽는 순서
 
+[먼저 보기: 이전·현재 ROB 아키텍처 비교](#architecture-history)
+
 1. [ROB Compression은 무엇을 묶는가?](#q1)
 2. [NORMAL·SC·CS·CC는 어떻게 만들어지는가?](#q2)
 3. [former가 끝나면 먼저 commit할 수 있을까?](#q3)
@@ -19,6 +21,74 @@ F: 소스 사실 / A: 설명용 가정 / C: 계산 / M: 추가 측정. 각 명�
 8. [store가 있는 entry를 복구할 때 무엇을 남길까?](#q8)
 
 [참고 자료: 상세 조건과 소스 근거](#references)
+
+<a id="architecture-history"></a>
+
+## 먼저 보기 — 이전 구현과 새 구현의 ROB 아키텍처
+
+여기서 **이전**은 구 CompressUnit 구현 `c9ac93a1`, **현재**는 이 문서에 고정한 `f85a1f71`이다. 현재 GitHub 브랜치의 최신 HEAD를 의미하지 않는다. 핵심 변화는 **한 묶음의 완료를 하나로 세던 구조에서, 같은 physical ROB entry 안의 former/latter를 식별하고 완료·복구를 구분하는 구조로 확장한 것**이다.
+
+![이전 ROB와 새 ROB의 압축 생성, entry 완료 상태, writeback 및 commit 복구 아키텍처](assets/rob-compression-study/figure-00a-rob-architecture.png)
+
+**비교 그림 A — ROB 아키텍처.** 좌우 모두 Rename에서 묶음을 만들고 Dispatch에서 ROB 등록과 IQ 전달을 진행한다. 실행 결과의 WB가 ROB 완료 상태를 갱신한다. ROB를 거친 뒤에야 실행을 시작하는 직렬 경로가 아니다. 상자는 기능 구분이며 실제 floorplan이 아니다. 슬롯 카운터는 논리적으로 두 개이고 실제 코드는 type별 `uopState`에 packed 저장한다.
+
+[SVG 원본](assets/rob-compression-study/figure-00a-rob-architecture.svg)
+
+### 이전에는 어떻게 묶었나?
+
+구 CompressUnit은 `canRobCompress`, 유효성·예외·lastUop 및 FTQ 경계 조건으로 연속 압축 묶음을 만들었다. 묶음의 구성원은 **같은 robIdx**를 사용하고 `needRobFlags`, `instrSizes`, `masks`로 엔트리 할당과 묶음 크기를 전달했다. Rename은 move·fusion을 반영해 초기 numWB를 조정했다.
+
+ROB에는 하나의 `uopNum` 완료 상태가 있었다. 예를 들어 fusion/move가 없는 `[ADD, XOR, BEQ]`에서 WB 세 개를 기다리면, 전체 count가 0이 된 뒤 순서·예외 등 commit 조건을 확인한다. **어느 WB가 former이고 latter인지 구별하는 새 슬롯 식별자는 없었다.**
+
+구 구현이 ALU만 압축했다는 설명은 부정확하다. Decode에서 압축 가능한 연산들을 정했고, `blockBackCompress = Seq(brh, jmp)`를 통해 연속 압축 가능한 명령 뒤의 branch/jump도 묶음 끝에 붙일 수 있었다. 아래 예제의 LD는 구 Decode에서 canRobCompress가 켜져 있지 않으므로 별도 entry가 된다.
+
+### 새 구현에서 무엇이 추가됐나?
+
+새 CompressUnit은 연속 simple 명령들을 **S token 하나**로 만들고, pair 가능한 complex 명령은 **C token 하나**로 취급한다. 인접 token을 짝지어 former/latter에 놓는다. 압축 금지 명령과 batch 경계는 별도로 처리한다.
+
+- **NORMAL:** 단독 token 또는 압축 불가 명령 등의 경로. 하나의 S token에 여러 simple 명령이 들어갈 수도 있다.
+- **SC:** former=S, latter=C.
+- **CS:** former=C, latter=S.
+- **CC:** former=C, latter=C.
+
+ROB pointer에는 `isFormer`가 추가되어 같은 physical entry 안에서도 어느 슬롯인지 구별한다. WB도 해당 슬롯의 완료 수를 갱신한다. `entryPairType`, packed `uopState`, `slotNeedFlushMask`, former trace 등으로 부분 삭제 후 살아남을 entry를 재구성할 수 있다.
+
+**former와 latter가 둘 다 완료되어야 정상 entry retirement 후보가 된다.** 슬롯 구분이 생겼다고 일반적인 정상 commit이 두 반쪽으로 나뉘는 것은 아니다. store의 pendingPtr·precommit은 또 다른 경계이며 뒤의 7절에서 구분한다.
+
+![같은 명령열의 구 구현과 새 구현 ROB entry 배치 비교](assets/rob-compression-study/figure-00b-rob-entry-examples.png)
+
+**비교 그림 B — 같은 명령열의 저장 모습.** 각 행은 별개의 Rename batch다. 압축 허용·FTQ 경계 통과·fusion/move 없음 조건을 가정했다. 대괄호 하나는 physical entry이고 `|`는 새 구현의 슬롯 경계다. 완료 수 변화는 설명용 사건 순서이며 특정 사이클 latency를 뜻하지 않는다.
+
+[SVG 원본](assets/rob-compression-study/figure-00b-rob-entry-examples.svg)
+
+### 그림에서 가장 중요한 차이는 복구 경계다
+
+`ADD, XOR, LD`를 보자. 이전 구현은 `[ADD,XOR]`와 `[LD]`의 두 entry이므로 LD 예외 때 앞 entry를 보존하는 경계가 이미 물리적으로 나뉘어 있다. 새 구현은 `SC [ADD,XOR | LD]`의 한 entry이므로 **그 entry의 latter만 제거하고 former를 보존하는 기능**이 필요하다. 그때 type을 NORMAL로 바꾸고 완료·destination 수·trace 등 남은 상태를 맞춘다. 예외 처리와 복구 gate를 거친 뒤 남은 former가 정상 retire한다.
+
+분기 오예측은 self-flush 예외와도 다르다. 새 `SC [ADD,XOR | BEQ]`의 latter BEQ가 flushAfter를 내면 BEQ 자신과 앞 ALU들이 살아남는다. 반대로 `CC [BEQ | LD]`의 former BEQ가 flushAfter를 내면 뒤 LD가 잘못된 경로이므로 제거한다. 이 구분을 위해 entry 순서 외에 slot 순서가 필요하다.
+
+| 비교 항목 | 이전 c9ac93a1 | 현재 문서 기준 f85a1f71 |
+| --- | --- | --- |
+| 압축 생성 | 연속 묶음 mask, pattern 열거 후 Espresso decode | S/C token 생성, 인접 pairing과 prefix transform |
+| ROB 식별 | 묶음이 동일 robIdx 공유 | 동일 entry 안에서 isFormer로 슬롯 구분 |
+| 완료 추적 | uopNum 하나 | packed uopState에서 former/latter count 복원 |
+| 정상 commit | 묶음 전체 완료 후 entry 단위 | 두 슬롯 완료 후 entry 단위 |
+| load를 포함한 예 | LD는 위 예제에서 별도 entry | SC·CS·CC에 pair 가능한 LD 포함 |
+| 복구 | entry 경계의 self/after 판정 | entry+slot 경계 판정, latter 제거 시 former 보존·재구성 |
+| 비용이 생기는 부분 | 큰 패턴 생성 및 decode, 묶음 완료·metadata | token/pairing, slot별 WB matching·상태 갱신·복구 metadata |
+
+위 표는 구조 차이다. Espresso는 실행 중 소프트웨어 정렬이 아니라 elaboration 때 조합 decode를 만드는 도구이고, 새 prefix 구현도 mask·PopCount·MUX 비용을 없애지는 않는다. 두 버전의 합성 면적·Fmax·IPC를 측정한 비교는 아니다.
+
+### 왜 비활성화됐고, 새 구현은 단순 재활성화와 무엇이 다른가?
+
+이전 비활성화 커밋은 **새 ftqOffset으로 instruction fusion과 ROB compression에 버그가 발생했다**고 명시하고, `robCompressEn=false` 및 RobSize 160→224를 함께 적용했다. 이는 정확성 문제에 대한 비활성화이며, “압축 성능이 나빠서 폐기했다”는 근거가 아니다. 이후 재활성화와 재비활성화를 거쳤다.
+
+새 구현은 플래그만 되돌린 것이 아니라 **압축 생성 방식, ROB 슬롯 식별, 완료 상태와 복구·관측 metadata를 함께 변경**했다. 다만 이 변경이 모든 corner case의 정확성이나 PPA 개선을 증명하는 것은 아니다. 현재 기준은 ROB 160 physical entries이며, 2개 슬롯이 있다고 항상 320 ISA 명령을 저장하는 것도 아니다. NORMAL·S run·pair 금지 조건과 다른 자원 한계에 따라 수용 명령 수가 달라진다.
+
+**핵심 결론:** 예전에도 여러 명령을 한 entry로 묶었다. 새 구현의 추가 가치는 **더 다양한 token 조합을 묶으면서, 한 entry 내부의 두 순서 지점을 정확히 구분해 완료와 복구를 처리하는 것**이다.
+
+[상세 이력·소스 근거](#ref-1)
+
 
 <a id="q1"></a>
 
@@ -409,6 +479,19 @@ latter BEQ가 오예측해도 older SD는 보존한다. 순서가 \[BEQ | SD\]�
 | 2026-10-16 / 10-22 | 144→160 확대와 former self-flush wrap 경계 수정이 현재 기준에 포함. |
 
 **M.** 압축률·IPC·PPA는 측정하지 않았다. ROB 공간 절약이 IQ·PRF·RAB까지 같은 비율로 늘려 주지는 않는다. old raw pattern 열거 4^W/key 3^W는 생성 규모 계산이며 gate 수가 아니다. 12–16-wide 검토에서는 pairing, WB matching, ROB bank/commit line, RAB·RAT 회수 폭과 복구 경계를 함께 평가한다.
+
+
+#### 아키텍처 비교의 직접 근거
+
+- [구 CompressUnit: 연속 묶음과 Espresso decode](https://github.com/OpenXiangShan/XiangShan/blob/c9ac93a188250144a0f09e884122fb018cc5f70b/src/main/scala/xiangshan/backend/rename/CompressUnit.scala#L41-L111)
+- [구 FuType: blockBackCompress](https://github.com/OpenXiangShan/XiangShan/blob/c9ac93a188250144a0f09e884122fb018cc5f70b/src/main/scala/xiangshan/backend/fu/FuType.scala#L138)
+- [구 DecodeUnit: ADD·XOR·LD 분류](https://github.com/OpenXiangShan/XiangShan/blob/c9ac93a188250144a0f09e884122fb018cc5f70b/src/main/scala/xiangshan/backend/decode/DecodeUnit.scala#L152-L163)
+- [구 ROB: uopNum writeback 갱신](https://github.com/OpenXiangShan/XiangShan/blob/c9ac93a188250144a0f09e884122fb018cc5f70b/src/main/scala/xiangshan/backend/rob/Rob.scala#L1020-L1051)
+- [새 CompressUnit: type·token·prefix pairing](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/rename/CompressUnit.scala#L39-L220)
+- [새 RobBundles: packed counter와 슬롯별 완료](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/rob/RobBundles.scala#L68-L174)
+- [새 RobPtr: isFormer와 slot-aware needFlush](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/rob/RobBundles.scala#L294-L357)
+- [비활성화 사유·ROB 용량 변경](https://github.com/OpenXiangShan/XiangShan/commit/a987696bece1a5bc58dee153b3436d66a9ffd54b)
+- [재비활성화 사유·설정 변경](https://github.com/OpenXiangShan/XiangShan/commit/0306fb2bad7f82bceb45ae46ec78449b9c77e803)
 
 #### 소스 근거
 

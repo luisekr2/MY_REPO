@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1130" viewBox="0 0 1240 1130"><defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#506b82"/></marker></defs><style>text{font-family:'Malgun Gothic',Arial,sans-serif;fill:#172c41}.title{font-size:26px;font-weight:700}.head{font-size:20px;font-weight:700}.body{font-size:17px}.small{font-size:16px}</style><rect width="1240" height="1130" fill="white"/>
+<text x="30" y="42" class="title">ROB 아키텍처 비교 · 한 묶음의 완료 → 슬롯별 완료와 복구</text>
+<text x="30" y="74" class="small">이전: c9ac93a1 / 현재 문서 기준: f85a1f71 · 기능 경로도이며 실제 floorplan·사이클 파형이 아니다.</text>
+<text x="30" y="116" class="head">이전 구현 · 같은 robIdx로 묶음 관리</text>
+<rect x="30" y="137" width="560" height="110" rx="9" fill="#eff5fb" stroke="#91a8bf"/>
+<text x="44" y="165" class="head">Rename · CompressUnit</text>
+<text x="44" y="194" class="body">canRobCompress·FTQ 경계로 연속 묶음 결정</text>
+<text x="44" y="219" class="body">pattern 열거 → Espresso decode → mask / needRobFlags</text>
+<rect x="405" y="289" width="185" height="126" rx="9" fill="#eff5fb" stroke="#91a8bf"/>
+<text x="419" y="317" class="head">실행 경로</text>
+<text x="419" y="346" class="body">Dispatch → IQ</text>
+<text x="419" y="371" class="body">→ EXU / MemBlock</text>
+<text x="419" y="396" class="body">명령별 실행·결과</text>
+<polyline points="495,247 495,289" fill="none" stroke="#506b82" stroke-width="2" marker-end="url(#arr)"/>
+<polyline points="205,247 205,375" fill="none" stroke="#506b82" stroke-width="2" marker-end="url(#arr)"/>
+<text x="45" y="290" class="small">Dispatch에서</text>
+<text x="45" y="315" class="small">ROB 등록</text>
+<rect x="45" y="375" width="330" height="238" rx="9" fill="#f0f3f8" stroke="#91a8bf"/>
+<text x="59" y="405" class="head">ROB physical entry E</text>
+<text x="59" y="441" class="body">묶음의 모든 uop: 같은 robIdx</text>
+<rect x="59" y="461" width="300" height="91" rx="9" fill="#fff" stroke="#91a8bf"/>
+<text x="73" y="489" class="head">완료 domain 하나</text>
+<text x="73" y="518" class="body">uopNum ← 초기 numWB</text>
+<text x="73" y="543" class="body">WB 수를 차감 → 0이면 완료</text>
+<text x="59" y="584" class="body">realDestSize / needFlush / FTQ 정보</text>
+<polyline points="495,415 495,486 375,486" fill="none" stroke="#506b82" stroke-width="2" marker-end="url(#arr)"/>
+<text x="424" y="473" class="small">WB</text>
+<polyline points="205,613 205,667" fill="none" stroke="#506b82" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="30" y="667" width="560" height="117" rx="9" fill="#eff5fb" stroke="#91a8bf"/>
+<text x="44" y="695" class="head">ROB head · 정상 commit</text>
+<text x="44" y="724" class="body">uopNum=0 + 순서·예외·기타 gate → entry retirement</text>
+<text x="44" y="749" class="body">묶음의 완료 상태를 하나로 판정</text>
+<polyline points="310,784 310,818" fill="none" stroke="#506b82" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="30" y="818" width="560" height="78" rx="9" fill="#eff5fb" stroke="#91a8bf"/>
+<text x="44" y="846" class="head">Mapping 회수 경로</text>
+<text x="44" y="875" class="body">ROB commit 정보 → RAB → architectural RAT / 레지스터 회수</text>
+<rect x="30" y="923" width="560" height="112" rx="9" fill="#fff2dd" stroke="#91a8bf"/>
+<text x="44" y="951" class="head">Redirect · Recovery</text>
+<text x="44" y="980" class="body">entry 경계의 self/after flush로 복구</text>
+<text x="44" y="1005" class="body">새 구현의 slot별 삭제·재구성 상태는 없음</text>
+<text x="650" y="116" class="head">새 구현 · former / latter를 구분</text>
+<rect x="650" y="137" width="560" height="110" rx="9" fill="#eff5fb" stroke="#91a8bf"/>
+<text x="664" y="165" class="head">Rename · CompressUnit</text>
+<text x="664" y="194" class="body">simple run을 S token으로, complex 명령을 C token으로</text>
+<text x="664" y="219" class="body">인접 token pairing → NORMAL / SC / CS / CC</text>
+<rect x="1025" y="289" width="185" height="126" rx="9" fill="#eff5fb" stroke="#91a8bf"/>
+<text x="1039" y="317" class="head">실행 경로</text>
+<text x="1039" y="346" class="body">Dispatch → IQ</text>
+<text x="1039" y="371" class="body">→ EXU / MemBlock</text>
+<text x="1039" y="396" class="body">명령별 실행·결과</text>
+<polyline points="1115,247 1115,289" fill="none" stroke="#506b82" stroke-width="2" marker-end="url(#arr)"/>
+<polyline points="825,247 825,375" fill="none" stroke="#506b82" stroke-width="2" marker-end="url(#arr)"/>
+<text x="665" y="290" class="small">Dispatch에서</text>
+<text x="665" y="315" class="small">ROB 등록</text>
+<rect x="665" y="375" width="330" height="238" rx="9" fill="#e6f5ed" stroke="#91a8bf"/>
+<text x="679" y="405" class="head">ROB physical entry E</text>
+<text x="679" y="435" class="body">robIdx = entry + isFormer</text>
+<rect x="679" y="451" width="140" height="91" rx="9" fill="#fff" stroke="#91a8bf"/>
+<rect x="831" y="451" width="148" height="91" rx="9" fill="#fff" stroke="#91a8bf"/>
+<text x="689" y="477" class="head">former</text>
+<text x="841" y="477" class="head">latter</text>
+<text x="689" y="510" class="body">WB count F</text>
+<text x="841" y="510" class="body">WB count L</text>
+<text x="679" y="570" class="body">실제 저장: type + packed uopState</text>
+<text x="679" y="596" class="body">slotNeedFlushMask / 복구용 metadata</text>
+<polyline points="1115,415 1115,486 995,486" fill="none" stroke="#506b82" stroke-width="2" marker-end="url(#arr)"/>
+<text x="1044" y="473" class="small">WB</text>
+<polyline points="825,613 825,667" fill="none" stroke="#506b82" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="650" y="667" width="560" height="117" rx="9" fill="#eff5fb" stroke="#91a8bf"/>
+<text x="664" y="695" class="head">ROB head · 정상 commit</text>
+<text x="664" y="724" class="body">F=0 AND L=0 + 순서·예외·기타 gate → entry retirement</text>
+<text x="664" y="749" class="body">former만 완료됐다고 정상 반쪽 commit하지 않음</text>
+<polyline points="930,784 930,818" fill="none" stroke="#506b82" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="650" y="818" width="560" height="78" rx="9" fill="#eff5fb" stroke="#91a8bf"/>
+<text x="664" y="846" class="head">Mapping 회수 경로</text>
+<text x="664" y="875" class="body">ROB commit 정보 → RAB → architectural RAT / 레지스터 회수</text>
+<rect x="650" y="923" width="560" height="112" rx="9" fill="#fff2dd" stroke="#91a8bf"/>
+<text x="664" y="951" class="head">Redirect · Recovery</text>
+<text x="664" y="980" class="body">entry + slot + self/after로 생존 범위를 구분</text>
+<text x="664" y="1005" class="body">latter 제거 시 former를 남긴 NORMAL entry로 보정</text>
+<text x="30" y="1074" class="small">공통: 실행 결과 데이터는 PRF 등에 기록된다. Compression은 명령들을 하나의 연산으로 합치는 fusion이 아니다.</text>
+<text x="30" y="1102" class="small">현재 기준의 ROB는 160 physical entries / 8 banks. former·latter는 독립 ROB entry 두 개가 아닌 한 entry 안의 논리 슬롯이다.</text></svg>
