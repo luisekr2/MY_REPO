@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1090" viewBox="0 0 1240 1090"><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#476b86"/></marker></defs><rect width="1240" height="1090" fill="white"/><g font-family="Malgun Gothic,Arial,sans-serif" fill="#172c41">
+<text x="30" y="42" font-size="28">ROB commit → RAB: 시작 위치 + 처리할 개수</text>
+<text x="30" y="74" font-size="17">그림 3-A · f85a1f71 · 정상 idle / redirect 없음 / ADD 8개 / RAB 출력 폭 8 records/cycle</text>
+<rect x="30" y="100" width="570" height="155" rx="8" fill="#edf4fb" stroke="#91a9bc"/>
+<text x="46" y="131" font-size="22">① mapping은 미리 순서대로 저장</text>
+<text x="46" y="164" font-size="19">ADD0…7: x10…17 ← x1 + x2</text>
+<text x="46" y="191" font-size="19">새 destination p40…47 → RAB R100…107</text>
+<text x="46" y="218" font-size="19">ROB E는 realDestSize = 8을 보관한다.</text>
+<rect x="640" y="100" width="570" height="155" rx="8" fill="#e5f4eb" stroke="#91a9bc"/>
+<text x="656" y="131" font-size="22">② ROB E가 정상 commit</text>
+<text x="656" y="164" font-size="19">ROB → RAB: newCommitSize = 8</text>
+<text x="656" y="191" font-size="19">RAB pending count에 8을 더한다.</text>
+<text x="656" y="218" font-size="19">ROB 번호로 RAB 전체를 검색하지 않는다.</text>
+<path d="M925 255 L925 295" stroke="#476b86" stroke-width="2" marker-end="url(#a)"/>
+<text x="30" y="302" font-size="22">③ deqPtr가 첫 미처리 record를 가리킨다. 후보는 그 위치부터 연속 8개.</text>
+<rect x="30" y="330" width="140" height="130" rx="8" fill="#e5f4eb" stroke="#91a9bc"/>
+<text x="46" y="361" font-size="22">R100</text>
+<text x="46" y="394" font-size="19">x10 → p40</text>
+<text x="46" y="421" font-size="19">E / ADD0</text>
+<rect x="178" y="330" width="140" height="130" rx="8" fill="#e5f4eb" stroke="#91a9bc"/>
+<text x="194" y="361" font-size="22">R101</text>
+<text x="194" y="394" font-size="19">x11 → p41</text>
+<text x="194" y="421" font-size="19">E / ADD1</text>
+<rect x="326" y="330" width="140" height="130" rx="8" fill="#e5f4eb" stroke="#91a9bc"/>
+<text x="342" y="361" font-size="22">R102</text>
+<text x="342" y="394" font-size="19">x12 → p42</text>
+<text x="342" y="421" font-size="19">E / ADD2</text>
+<rect x="474" y="330" width="140" height="130" rx="8" fill="#e5f4eb" stroke="#91a9bc"/>
+<text x="490" y="361" font-size="22">R103</text>
+<text x="490" y="394" font-size="19">x13 → p43</text>
+<text x="490" y="421" font-size="19">E / ADD3</text>
+<rect x="622" y="330" width="140" height="130" rx="8" fill="#e5f4eb" stroke="#91a9bc"/>
+<text x="638" y="361" font-size="22">R104</text>
+<text x="638" y="394" font-size="19">x14 → p44</text>
+<text x="638" y="421" font-size="19">E / ADD4</text>
+<rect x="770" y="330" width="140" height="130" rx="8" fill="#e5f4eb" stroke="#91a9bc"/>
+<text x="786" y="361" font-size="22">R105</text>
+<text x="786" y="394" font-size="19">x15 → p45</text>
+<text x="786" y="421" font-size="19">E / ADD5</text>
+<rect x="918" y="330" width="140" height="130" rx="8" fill="#e5f4eb" stroke="#91a9bc"/>
+<text x="934" y="361" font-size="22">R106</text>
+<text x="934" y="394" font-size="19">x16 → p46</text>
+<text x="934" y="421" font-size="19">E / ADD6</text>
+<rect x="1066" y="330" width="140" height="130" rx="8" fill="#e5f4eb" stroke="#91a9bc"/>
+<text x="1082" y="361" font-size="22">R107</text>
+<text x="1082" y="394" font-size="19">x17 → p47</text>
+<text x="1082" y="421" font-size="19">E / ADD7</text>
+<text x="30" y="492" font-size="20">deqPtr = R100</text>
+<text x="350" y="492" font-size="20">commitValid[0…7] = 1 → 8 records 출력</text>
+<path d="M620 510 L620 544" stroke="#476b86" stroke-width="2" marker-end="url(#a)"/>
+<rect x="30" y="550" width="1180" height="137" rx="8" fill="#edf4fb" stroke="#91a9bc"/>
+<text x="46" y="581" font-size="22">④ 처리 후: deqPtr = R108 / pending count = 0</text>
+<text x="46" y="614" font-size="19">normal idle: commitCount = min(pending count, 8)</text>
+<text x="46" y="641" font-size="19">pendingNext = pending + newCommitSize − commitCount</text>
+<text x="46" y="668" font-size="19">RAB 출력은 Rob의 RegNext를 거쳐 rename 쪽으로 전달된다. 결과값 자체는 PRF에 남는다.</text>
+<text x="30" y="730" font-size="22">국소 사이클 예: 이전 mapping 처리 완료, 새 credit은 C0에만 8개 도착</text>
+<rect x="30" y="756" width="370" height="172" rx="8" fill="#edf4fb" stroke="#91a9bc"/>
+<text x="46" y="787" font-size="22">C0 · ROB가 개수 통보</text>
+<text x="46" y="820" font-size="19">시작 pending = 0</text>
+<text x="46" y="847" font-size="19">newCommitSize = 8 / 출력 0</text>
+<text x="46" y="874" font-size="19">edge 후 pending = 8</text>
+<text x="46" y="901" font-size="19">deqPtr = R100</text>
+<rect x="435" y="756" width="370" height="172" rx="8" fill="#e5f4eb" stroke="#91a9bc"/>
+<text x="451" y="787" font-size="22">C1 · RAB가 mapping 출력</text>
+<text x="451" y="820" font-size="19">시작 pending = 8</text>
+<text x="451" y="847" font-size="19">R100…107 출력 / count = 8</text>
+<text x="451" y="874" font-size="19">edge 후 pending = 0</text>
+<text x="451" y="901" font-size="19">deqPtr = R108</text>
+<rect x="840" y="756" width="370" height="172" rx="8" fill="#edf4fb" stroke="#91a9bc"/>
+<text x="856" y="787" font-size="22">C2 · 등록된 출력 전달</text>
+<text x="856" y="820" font-size="19">rob.io.rabCommits에</text>
+<text x="856" y="847" font-size="19">8 mapping이 보인다.</text>
+<text x="856" y="874" font-size="19">이후 RAT 갱신·회수 지연은</text>
+<text x="856" y="901" font-size="19">이 국소 그림에 포함하지 않음</text>
+<rect x="30" y="957" width="1180" height="100" rx="8" fill="#fff2de" stroke="#91a9bc"/>
+<text x="46" y="988" font-size="22">핵심: ROB entry 경계와 RAB 출력 묶음 경계는 다를 수 있다.</text>
+<text x="46" y="1021" font-size="19">앞선 mapping 3개 + E의 8개가 승인되어 있다면: 첫 출력은 older 3 + E의 5, 다음 출력은 E의 3.</text>
+</g></svg>

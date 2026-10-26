@@ -259,6 +259,77 @@ C2에 두 ALU가 끝나도 LD가 남으면 E는 점유 상태다. 반대로 LD�
 
 완료는 슬롯별로 추적하지만, 정상 ROB retirement는 entry 단위다. 부분 완료는 반쪽 commit이 아니다.
 
+<a id="rab-commit-selection"></a>
+
+### ROB entry 하나가 commit되면 RAB의 8개 mapping을 어떻게 찾을까?
+
+**시작 위치는 RAB의 `deqPtr`, 처리할 개수는 ROB에서 전달한 mapping 수가 알려준다.** RAB에 mapping을 명령 순서대로 넣고 ROB도 순서대로 commit하므로, 정상 commit에서 ROB 번호를 키로 전체 RAB를 검색할 필요가 없다.
+
+![ROB commit 개수와 RAB deqPtr로 8개 mapping을 처리하는 구조 및 사이클](assets/rob-compression-study/figure-03a-rab-commit-selection.png)
+
+**그림 3-A.** ADD 8개를 대표하는 ROB E가 commit되면, 이미 RAB에 저장된 8 records의 처리 권한이 생긴다. 그림의 C0–C2는 RAB 주변만 보여주는 국소 사이클이며, ADD 실행부터 commit까지의 전체 지연이 아니다.
+
+[SVG 원본](assets/rob-compression-study/figure-03a-rab-commit-selection.svg)
+
+**명령열 예제 — 먼저 넣어 둔 순서가 찾는 방법이다**
+
+```text
+ADD0: add x10, x1, x2   → 새 mapping x10 → p40 → RAB R100
+ADD1: add x11, x1, x2   → 새 mapping x11 → p41 → RAB R101
+...
+ADD7: add x17, x1, x2   → 새 mapping x17 → p47 → RAB R107
+
+ROB: NORMAL entry E 하나, realDestSize = 8
+RAB: mapping record 8개, 각각 ldest / pdest / write enables / isMove 등
+```
+
+가정은 같은 압축 가능 batch, fusion·move 없음, 서로 다른 정수 destination, 정상 idle, redirect 없음이다. p40–47과 R100–107은 설명용 번호다. `R100`은 ROB 번호가 아니라 RAB record 위치이며 실제 포인터는 wrap을 관리한다.
+
+1. **등록:** `needEnqRab`인 유효 명령만 RAB에 넣는다. 앞선 lane의 할당 수를 `PopCount`해서 enqueue 위치를 정하므로, mapping이 없는 명령이 중간에 있어도 빈칸 없이 순서대로 들어간다.
+2. **ROB commit:** E의 완료와 다른 commit 조건이 충족되면 ROB는 `realDestSize = 8`을 commit 개수 합계에 포함한다. 여러 ROB entry가 같은 사이클에 commit하면 그 mapping 수를 합산한다.
+3. **RAB 처리 승인:** RAB의 `commitSize` 레지스터는 **ROB commit이 승인했지만 아직 RAB 출력으로 처리하지 않은 mapping 수**다. 새로 들어온 수를 `newCommitSize`라 부른다. 둘은 같은 이름의 신호처럼 보여도 누적 대기량과 이번 입력량이라는 차이가 있다.
+4. **위치 선택:** `deqPtr`부터 연속한 `RabCommitWidth = 8`개 후보를 읽는다. 정상 idle에서 출력 lane i는 `i < commitSize`일 때 유효하다. 이 예에서는 이전 record가 모두 처리되어 `deqPtr = R100`이면 R100–107이 선택된다.
+5. **출력 후 이동:** 8개를 처리하면 `deqPtr`를 8만큼 움직인다. ROB가 다음 entry의 mapping 수를 아직 승인하지 않았다면 R108 이후 record는 저장되어 있어도 commit 출력하지 않는다.
+
+정상 idle 경로를 식으로 요약하면 다음과 같다. redirect·walk 경로에서는 별도 제어가 적용된다.
+
+```text
+commitCount = min(commitSize, RabCommitWidth)
+commitSizeNext = commitSize + newCommitSize - commitCount
+deqPtrNext = deqPtr + commitCount
+```
+
+**그림의 사이클 읽기**
+
+| 사이클 | 시작 시 RAB pending count | ROB에서 새로 승인 | RAB가 이번에 출력 | 다음 사이클 시작 상태 |
+|---|---:|---:|---|---|
+| C0 | 0 | 8 | 없음 | pending 8, deqPtr R100 |
+| C1 | 8 | 0 | R100–107의 8 mapping | pending 0, deqPtr R108 |
+| C2 | 0 | 0 | 새 RAB 출력 없음 | Rob의 등록된 `rabCommits`에는 C1의 8 mapping이 전달됨 |
+
+새 승인은 `commitSize` 레지스터에 반영된 뒤 RAB 출력의 valid를 만든다. 또한 `Rob.scala`에 `io.rabCommits := RegNext(rab.io.commits)`가 있으므로, ROB entry commit과 architectural RAT 갱신을 같은 순간으로 그리면 안 된다. 위 표는 그 출력 레지스터까지만 다루며, downstream RAT 갱신·레지스터 회수의 추가 지연은 포함하지 않는다. RAB가 전달하는 것은 mapping metadata이며 PRF의 연산 결과값을 옮기는 동작은 아니다.
+
+**이전 mapping이 남아 있으면 E의 8개도 나누어 처리한다**
+
+다음 표는 C0–C2와 별개인 시작 상태다. older mapping 3개와 E의 8개가 이미 승인되어 `commitSize = 11`, `deqPtr = R97`이고 이후 새 승인이 없다고 가정한다.
+
+| 출력 사이클 | 시작 pointer / pending | 8개 출력 lane에 들어가는 record | 처리 후 |
+|---|---|---|---|
+| T0 | R97 / 11 | older R97–99의 3개 + E R100–104의 5개 | R105 / 3 |
+| T1 | R105 / 3 | E R105–107의 3개, 나머지 lane invalid | R108 / 0 |
+
+E의 ROB retirement는 이미 끝났고, RAB는 승인된 mapping을 순서대로 내보낸다. **ROB entry 하나마다 RAB 출력 한 묶음을 따로 만드는 구조가 아니다.** 따라서 E의 8개 mapping이 반드시 같은 사이클에 처리된다는 보장은 없다.
+
+**핵심 결론**
+
+ROB는 “어디에 있는 mapping인가” 대신 “앞에서부터 몇 개를 더 처리해도 되는가”를 전달한다. RAB는 `deqPtr`로 위치를 알고 누적 count로 범위를 안다. ADD 8개 예에서는 mapping도 8개지만, destination이 없는 store·branch 등이 섞이면 명령 수와 `realDestSize`는 달라진다. 정상 경로의 순서 불변식 덕분에 검색 없이 연결되며, redirect·walk에서는 복구 전용 포인터와 count 제어를 함께 적용한다.
+
+**이 설명의 소스 근거 — 고정 커밋 `f85a1f71`**
+
+- [Rab.scala: 등록·pending count·포인터·출력](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/rob/Rab.scala#L119): `realNeedAlloc`, `allocatePtrVec`, `commitCandidates`, `commitSizeNxt`, `deqPtrSteps`, `commitValid`. `robIdx` 필드가 있어도 정상 commit 후보 선택은 포인터 기반이다.
+- [Rob.scala: mapping 수 합산과 출력 등록](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/rob/Rob.scala#L467): `realDestSizeSeq`, `commitSizeSum`, `rab.io.fromRob.commitSize`, `RegNext(rab.io.commits)`. 벡터 예외용 별도 선택 경로는 위 정수 정상 예제에서 제외했다.
+- [Parameters.scala: RAB 출력 폭](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/Parameters.scala#L85): `RabCommitWidth = 8`. 그림은 해당 설정 기준이다.
+
 ### 내 수정 사항
 
 **변경 내용**
