@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1130" viewBox="0 0 1240 1130"><defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#536c80"/></marker></defs><style>text{font-family:'Malgun Gothic',Arial,sans-serif;fill:#172c41}.title{font-size:26px;font-weight:700}.head{font-size:21px;font-weight:700}.body{font-size:18px}.small{font-size:16px}</style><rect width="1240" height="1130" fill="white"/>
+<text x="30" y="42" class="title">정보 분담 · ROB 1 entry가 ADD 8개를 대표하는 과정</text>
+<text x="30" y="74" class="small">그림 1-B · 등록·실행·commit 경로를 요약한 기능도. 화살표는 고정 사이클 지연이나 같은 사이클의 완료를 의미하지 않는다.</text>
+<rect x="30" y="104" width="1180" height="133" rx="9" fill="#e5f4eb" stroke="#93aabf"/>
+<text x="45" y="134" class="head">Rename: ADD0…ADD7 · x10…x17 ← x1 + x2</text>
+<text x="45" y="165" class="body">압축 허용·fusion/move 없음·각 명령 WB 1개 가정. p40…p47은 설명용 신규 physical destination.</text>
+<text x="45" y="191" class="body">명령별 매핑은 각각 생성하지만, ROB 식별자는 모두 E.former를 공유한다.</text>
+<text x="45" y="217" class="body">등록 결과: IQ 쪽 실행 uop 8개 / ROB entry 1개 / RAB record 8개 / PRF destination 8개</text>
+<polyline points="200,237 200,299" fill="none" stroke="#536c80" stroke-width="2" marker-end="url(#arr)"/>
+<polyline points="620,237 620,299" fill="none" stroke="#536c80" stroke-width="2" marker-end="url(#arr)"/>
+<polyline points="1045,237 1045,299" fill="none" stroke="#536c80" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="30" y="299" width="350" height="239" rx="9" fill="#eff5fb" stroke="#93aabf"/>
+<text x="45" y="329" class="head">IQ · 실행할 명령별 정보</text>
+<text x="45" y="360" class="body">ADD0 → pdest p40</text>
+<text x="45" y="386" class="body">ADD1 → pdest p41</text>
+<text x="45" y="412" class="body">… ADD7 → pdest p47</text>
+<text x="45" y="438" class="body">FU·연산 제어 / psrc / pdest</text>
+<text x="45" y="464" class="body">source 준비 상태 / robIdx=E</text>
+<text x="45" y="490" class="body">여러 IQ에 분산·대기·issue</text>
+<rect x="440" y="299" width="360" height="239" rx="9" fill="#e5f4eb" stroke="#93aabf"/>
+<text x="455" y="329" class="head">ROB · E 하나의 순서 관리</text>
+<text x="455" y="360" class="body">NORMAL / valid</text>
+<text x="455" y="386" class="body">남은 WB 수 = 8</text>
+<text x="455" y="412" class="body">realDestSize = 8</text>
+<text x="455" y="438" class="body">FTQ·trace·flush 관련 상태</text>
+<text x="455" y="464" class="body">이 entry가 8개 명령을 대표</text>
+<rect x="860" y="299" width="350" height="239" rx="9" fill="#eff5fb" stroke="#93aabf"/>
+<text x="875" y="329" class="head">RAB · mapping별 record</text>
+<text x="875" y="360" class="body">x10 → p40</text>
+<text x="875" y="386" class="body">x11 → p41</text>
+<text x="875" y="412" class="body">… x17 → p47</text>
+<text x="875" y="438" class="body">ldest / pdest / write enables</text>
+<text x="875" y="464" class="body">isMove 등 명령별 정보</text>
+<text x="875" y="490" class="body">이 예에서는 8 records</text>
+<polyline points="200,538 200,593" fill="none" stroke="#536c80" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="30" y="593" width="350" height="106" rx="9" fill="#eff5fb" stroke="#93aabf"/>
+<text x="45" y="623" class="head">EXU / Writeback</text>
+<text x="45" y="654" class="body">명령별로 ALU 연산 수행</text>
+<text x="45" y="680" class="body">실행 순서는 준비·선택 조건에 따름</text>
+<polyline points="380,645 620,645 620,538" fill="none" stroke="#536c80" stroke-width="2" marker-end="url(#arr)"/>
+<text x="420" y="625" class="small">WB(E): 완료 수 갱신</text>
+<polyline points="200,699 200,800" fill="none" stroke="#536c80" stroke-width="2" marker-end="url(#arr)"/>
+<text x="215" y="753" class="small">pdest + 결과값</text>
+<rect x="30" y="800" width="350" height="193" rx="9" fill="#e5f4eb" stroke="#93aabf"/>
+<text x="45" y="830" class="head">PRF · 결과 데이터</text>
+<text x="45" y="861" class="body">p40: ADD0 결과</text>
+<text x="45" y="887" class="body">p41: ADD1 결과</text>
+<text x="45" y="913" class="body">… p47: ADD7 결과</text>
+<text x="45" y="939" class="body">각 destination의 값을 따로 저장</text>
+<rect x="440" y="800" width="360" height="193" rx="9" fill="#eff5fb" stroke="#93aabf"/>
+<text x="455" y="830" class="head">ROB head의 commit 판단</text>
+<text x="455" y="861" class="body">WB 수=0 + older·예외 등 gate</text>
+<text x="455" y="887" class="body">entry E 정상 retirement</text>
+<text x="455" y="913" class="body">이 예의 mapping 회수 기여: 8</text>
+<text x="455" y="939" class="body">일반식은 여러 entry의</text>
+<text x="455" y="965" class="body">realDestSize를 합산</text>
+<polyline points="800,474 828,474 828,754 620,754 620,800" fill="none" stroke="#536c80" stroke-width="2" marker-end="url(#arr)"/>
+<polyline points="800,871 840,871 840,565 1035,565 1035,538" fill="none" stroke="#536c80" stroke-width="2" marker-end="url(#arr)"/>
+<text x="850" y="588" class="small">commitSize</text>
+<rect x="860" y="800" width="350" height="193" rx="9" fill="#eff5fb" stroke="#93aabf"/>
+<text x="875" y="830" class="head">RAB → architectural RAT</text>
+<text x="875" y="861" class="body">commit 허용 record를 순서대로</text>
+<text x="875" y="887" class="body">architectural mapping에 반영</text>
+<text x="875" y="913" class="body">이전 mapping의 회수 조건 검사</text>
+<text x="875" y="939" class="body">→ FreeList 반환 경로</text>
+<text x="875" y="965" class="body">ROB retirement와 시점 구분</text>
+<polyline points="1190,538 1220,538 1220,764 1035,764 1035,800" fill="none" stroke="#536c80" stroke-width="2" marker-end="url(#arr)"/>
+<rect x="30" y="1023" width="1180" height="80" rx="9" fill="#fff2de" stroke="#93aabf"/>
+<text x="45" y="1053" class="head">줄어드는 것은 ROB 순서·완료 정보의 중복이다</text>
+<text x="45" y="1084" class="body">IQ 실행 상태·PRF 결과값·RAB mapping까지 1개로 합쳐지지 않는다. RAB 자체도 Rob.scala 안에 생성되는 별도 구조다.</text></svg>

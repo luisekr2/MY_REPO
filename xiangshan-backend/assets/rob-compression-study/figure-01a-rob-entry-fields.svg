@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1070" viewBox="0 0 1240 1070"><defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#536c80"/></marker></defs><style>text{font-family:'Malgun Gothic',Arial,sans-serif;fill:#172c41}.title{font-size:26px;font-weight:700}.head{font-size:21px;font-weight:700}.body{font-size:18px}.small{font-size:16px}</style><rect width="1240" height="1070" fill="white"/>
+<text x="30" y="42" class="title">ROB entry 내부 · 명령 8개를 대표하는 요약 상태</text>
+<text x="30" y="74" class="small">그림 1-A · f85a1f71 · 주요 기능 필드만 표시. 정확한 비트 배치도나 debug 필드를 포함한 전체 넷리스트가 아니다.</text>
+<rect x="30" y="103" width="1180" height="96" rx="9" fill="#e5f4eb" stroke="#93aabf"/>
+<text x="45" y="133" class="head">예: 같은 Rename batch의 ADD 8개 → NORMAL entry E 하나</text>
+<text x="45" y="164" class="body">가정: 압축 허용, 서로 다른 정수 destination, fusion·move·예외 없음. 각 ADD는 WB 1개를 보낸다.</text>
+<rect x="30" y="225" width="760" height="640" rx="9" fill="#eff5fb" stroke="#93aabf"/>
+<text x="48" y="260" class="head">RobEntryBundle · 한 physical entry의 주요 상태</text>
+<rect x="48" y="282" width="724" height="79" rx="9" fill="#fff" stroke="#93aabf"/>
+<text x="62" y="309" class="head">valid · entryPairType</text>
+<text x="62" y="339" class="small">entry 사용 여부와 NORMAL / SC / CS / CC 형식</text>
+<rect x="48" y="373" width="724" height="79" rx="9" fill="#fff" stroke="#93aabf"/>
+<text x="62" y="400" class="head">uopState</text>
+<text x="62" y="430" class="small">남은 WB 수 저장 · NORMAL: former 값 / paired: F·L packed</text>
+<rect x="48" y="464" width="724" height="79" rx="9" fill="#fff" stroke="#93aabf"/>
+<text x="62" y="491" class="head">realDestSize · complexSlotHasDest</text>
+<text x="62" y="521" class="small">RAB mapping 회수 수와 부분 삭제 시 destination 보정 정보</text>
+<rect x="48" y="555" width="724" height="79" rx="9" fill="#fff" stroke="#93aabf"/>
+<text x="62" y="582" class="head">slotNeedFlushMask · interruptSafe · entryHasStore</text>
+<text x="62" y="612" class="small">슬롯별 flush 필요 여부, 인터럽트·store 관련 제어</text>
+<rect x="48" y="646" width="724" height="79" rx="9" fill="#fff" stroke="#93aabf"/>
+<text x="62" y="673" class="head">ftqIdx · ftqOffset · slotHeadRvcMask · commitType</text>
+<text x="62" y="703" class="small">명령 위치·종류 관련 metadata</text>
+<rect x="48" y="737" width="724" height="79" rx="9" fill="#fff" stroke="#93aabf"/>
+<text x="62" y="764" class="head">traceBlockInPipe · formerTraceBlockInPipe</text>
+<text x="62" y="794" class="small">retire 관측과 latter 삭제 후 former trace 복원</text>
+<rect x="825" y="225" width="385" height="184" rx="9" fill="#e5f4eb" stroke="#93aabf"/>
+<text x="840" y="255" class="head">ADD 8개인 NORMAL 예</text>
+<text x="840" y="286" class="body">entryPairType = NORMAL</text>
+<text x="840" y="312" class="body">남은 WB 수: 8</text>
+<text x="840" y="338" class="body">realDestSize = 8</text>
+<text x="840" y="364" class="body">latter 완료 수는 0으로 해석</text>
+<rect x="825" y="440" width="385" height="171" rx="9" fill="#eff5fb" stroke="#93aabf"/>
+<text x="840" y="470" class="head">완료를 세는 방식</text>
+<text x="840" y="501" class="body">ADD별 WB가 E를 가리킴</text>
+<text x="840" y="527" class="body">8 → 7 → 6 → … → 0</text>
+<text x="840" y="553" class="body">동시에 WB가 오면 여러 개 차감</text>
+<text x="840" y="579" class="body">8개의 결과값을 ROB에 쓰지 않음</text>
+<rect x="825" y="642" width="385" height="223" rx="9" fill="#fff2de" stroke="#93aabf"/>
+<text x="840" y="672" class="head">SC [ADD 7개 | LD]라면</text>
+<text x="840" y="703" class="body">former 남은 WB = 7</text>
+<text x="840" y="729" class="body">latter 남은 WB = 1</text>
+<text x="840" y="755" class="body">하나의 uopState 안에 packed 저장</text>
+<text x="840" y="781" class="body">F=0, L=0 이후 commit gate 검사</text>
+<text x="840" y="807" class="body">완료 count ≠ 일반적인 명령 수</text>
+<text x="840" y="833" class="body">store·fusion·move는 WB 수가 다름</text>
+<rect x="30" y="897" width="1180" height="120" rx="9" fill="#fff2de" stroke="#93aabf"/>
+<text x="45" y="927" class="head">이 entry 안에 없는 것</text>
+<text x="45" y="958" class="body">ADD 8개의 연산 제어·source 목록 전체 → IQ / 실행 파이프라인에 유지</text>
+<text x="45" y="984" class="body">8개의 결과값 → PRF에 저장 · 8개의 ldest↔pdest mapping record → RAB에 유지</text>
+<text x="30" y="1048" class="small">ROB의 robIdx는 entry를 가리키는 식별자이고, 새 RobPtr의 isFormer가 슬롯을 구분한다. 8개 명령어 저장 칸을 추가한 구조가 아니다.</text></svg>

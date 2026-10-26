@@ -114,6 +114,57 @@ add x5,x1,x2; xor x6,x3,x4; ld x7,0(x10)
 
 실행을 하나로 합치는 fusion이 아니다. 여러 명령의 ROB 순서·완료 정보를 같은 physical entry에 저장한다.
 
+### 한 entry가 명령 8개를 어떻게 대표할까?
+
+**명령어 8개와 그 결과값을 ROB entry 안에 통째로 넣는 것은 아니다.** 명령별 실행·값·mapping 정보는 다른 구조에 남기고, ROB는 공유할 수 있는 순서·완료·복구 상태를 묶어 관리한다.
+
+![ROB entry의 주요 필드와 ADD 8개를 대표하는 완료 및 mapping 상태](assets/rob-compression-study/figure-01a-rob-entry-fields.png)
+
+**그림 1-A. ROB entry 내부 확대.** 실제 `RobEntryBundle`의 주요 기능 필드를 모아 설명한 그림이다. 정확한 물리 비트 배치도나 debug/performance 필드를 포함한 전체 필드 목록은 아니다. `uopState`는 NORMAL과 paired type에 따라 다르게 해석한다.
+
+[SVG 원본](assets/rob-compression-study/figure-01a-rob-entry-fields.svg)
+
+**명령열 예제**
+
+`ADD0…ADD7`이 각각 `x10…x17 ← x1 + x2`를 수행한다고 가정한다. 같은 Rename batch이고 모두 압축 가능한 simple 명령이며, fusion·move·예외가 없고 각 명령이 WB 하나씩을 보낸다. 설명용 신규 physical destination은 `p40…p47`이다. 이때 NORMAL entry E는 다음 상태로 8개 명령을 대표할 수 있다.
+
+| ROB의 주요 상태 | 이 예제에서의 의미 |
+| --- | --- |
+| `valid` / `entryPairType` | entry 사용 중 / NORMAL |
+| `uopState` | 초기 남은 WB 수 8. 해당 entry WB 수만큼 차감한다. |
+| `realDestSize` | 이 예에서 RAB에 대응하는 destination mapping 수 8 |
+| FTQ·trace 관련 metadata | 명령 위치·retirement 관측 정보 |
+| flush·interrupt·store 관련 상태 | commit과 복구에 필요한 제어 |
+
+8개의 개별 완료 bit를 반드시 두는 대신, 이 묶음에서 아직 기다리는 WB 수로 전체 완료를 판단한다. WB가 동시에 도착하면 한 사이클에 여러 개가 차감될 수 있다. 단, **WB count와 ISA 명령 수는 일반적으로 같지 않다.** fusion·move·store처럼 실행/WB 구성이 다른 경우는 별도 계산한다. detailed exception은 ROB 주변의 예외 처리 구조와 함께 관리하며, 모든 명령의 전체 예외 정보를 이 요약 상자 하나에 저장한다고 해석하지 않는다.
+
+현재 Rename 폭 8에서 압축은 해당 batch 안의 architectural member mask를 사용한다. 따라서 NORMAL의 S run 또는 SC/CS는 조건에 따라 최대 8개 명령을 대표할 수 있고, CC는 pair 가능한 complex 명령 2개를 대표한다. 두 슬롯이 있다고 최대 명령 수도 2개인 것은 아니며, 다음 batch의 명령을 기존 entry에 계속 덧붙이는 방식도 아니다.
+
+### 명령별 정보는 IQ·PRF·RAB에 어떻게 남을까?
+
+![ADD 8개의 IQ 실행 정보 PRF 결과값 RAB mapping과 ROB 요약 상태 분담](assets/rob-compression-study/figure-01b-rob-iq-prf-rab.png)
+
+**그림 1-B. 정보 분담과 처리 경로.** 위쪽 세 갈래는 등록 결과를 요약한 기능 경로다. RAB는 실제로 `Rob.scala` 안의 `RenameBuffer` 인스턴스이며, ROB entry 배열과 구분되는 저장 구조라 따로 그렸다. Rename에서 각 배열로 직접 연결된 독립 인터페이스가 있다는 뜻은 아니다. 명령들은 IQ에서 따로 실행되고, 결과값과 완료 통보가 서로 다른 곳으로 간다.
+
+[SVG 원본](assets/rob-compression-study/figure-01b-rob-iq-prf-rab.svg)
+
+1. **IQ / 실행 파이프라인:** ADD0…ADD7의 연산 제어, source physical 번호와 준비 상태, destination, ROB 식별자를 각각 유지한다. 여러 IQ에 분산되며, issue·완료 진행에 따라 IQ 점유 수는 변한다. ROB 압축이 이 8개 실행 uop를 하나로 합치지는 않는다.
+2. **PRF:** 결과를 각각 p40…p47에 쓴다. entry E에 결과 데이터 8개를 쓰는 경로가 아니다. PRF 읽기와 RegCache/bypass 등 operand 공급 경로는 이 그림에서 생략했다.
+3. **ROB:** 각 WB가 E를 가리키므로 남은 WB 수를 차감한다. 0이 되어도 older entry·예외·walk 등 정상 commit 조건을 통과해야 retirement한다. SC/CS/CC이면 어느 슬롯인지도 구분해 완료 상태를 갱신한다.
+4. **RAB:** `x10→p40`부터 `x17→p47`까지 8개의 mapping record를 보관한다. ROB가 retire할 수 있는 destination 수를 `commitSize`로 전달하면 RAB가 순서대로 architectural RAT에 반영할 record를 내보낸다. 다른 entry와 함께 retire하면 각각의 `realDestSize`를 합산한다. 이전 mapping의 회수 조건 검사와 FreeList 반환은 이 뒤의 경로다.
+
+| 저장 단위 | 이 예제의 수량 | 보관하는 것 |
+| --- | ---: | --- |
+| ROB physical entry | 1개 | 묶음 순서·남은 WB 수·commit/복구 metadata |
+| 실행 uop | 8개 | IQ·실행 파이프라인의 명령별 실행 상태 |
+| PRF destination | 8개 | p40…p47의 개별 결과값 |
+| RAB record | 8개 | ldest·pdest·write-enable·isMove 등 mapping 정보 |
+
+**RAB 필드 주의:** 이 기준의 `RabCommitInfo`에는 `ldest`, `pdest`, 정수/FP/vector 등의 write-enable, `isMove`가 있다. `oldPdest`가 RAB의 기본 record 필드로 저장된다고 그리지 않았다. 이전 physical register의 회수는 RAT/rename의 후속 처리와 함께 이해해야 한다. 조건부 debug·관측용 `robIdx`도 데이터 경로의 필수 record 필드와 구분한다.
+
+**핵심 결론:** ROB entry 1개가 8개 명령을 대표해도, 실행할 명령·계산 결과·매핑 기록은 각각 남는다. 절약하는 것은 ROB 관리 정보의 중복이며, IQ·PRF·RAB의 필요량이 같은 비율로 줄어드는 것은 아니다.
+
+
 ### 내 수정 사항
 
 **변경 내용**
@@ -492,6 +543,17 @@ latter BEQ가 오예측해도 older SD는 보존한다. 순서가 \[BEQ | SD\]�
 - [새 RobPtr: isFormer와 slot-aware needFlush](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/rob/RobBundles.scala#L294-L357)
 - [비활성화 사유·ROB 용량 변경](https://github.com/OpenXiangShan/XiangShan/commit/a987696bece1a5bc58dee153b3436d66a9ffd54b)
 - [재비활성화 사유·설정 변경](https://github.com/OpenXiangShan/XiangShan/commit/0306fb2bad7f82bceb45ae46ec78449b9c77e803)
+
+
+#### Entry 내부·정보 분담 그림의 근거
+
+- [RobEntryBundle와 packed 완료 상태](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/rob/RobBundles.scala#L68-L174)
+- [Rename의 architectural mask·명령 수 계산](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/rename/Rename.scala#L291-L326)
+- [RAB 생성](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/rob/Rob.scala#L175)
+- [RAB 등록과 ROB commitSize 전달](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/rob/Rob.scala#L460-L488)
+- [RabCommitInfo 실제 필드](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/Bundle.scala#L354-L364)
+- [RAB record 저장·commit/walk 출력](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/rob/Rab.scala#L195-L214)
+- [PRF의 개별 register write](https://github.com/OpenXiangShan/XiangShan/blob/f85a1f71da8c1522035744c71e2cb266bfed1a7d/src/main/scala/xiangshan/backend/regfile/Regfile.scala#L169-L205)
 
 #### 소스 근거
 
